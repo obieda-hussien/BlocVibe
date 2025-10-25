@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BlocVibe</string>
+    <string name="blocvibe_projects">BlocVibe Projects</string>
+    <string name="new_project">New Project</string>
+    <string name="project_name">Project Name</string>
+    <string name="last_modified">Last modified: %s</string>
+    <string name="create">Create</string>
+    <string name="cancel">Cancel</string>
+    <string name="enter_project_name">Enter project name</string>
+    <string name="save">Save</string>
+    <string name="run">Run</string>
+    <string name="view_code">View Code</string>
+    <string name="editing">Editing: %s</string>
+    <string name="components">Components</string>
+    <string name="button">Button</string>
+    <string name="textview">TextView</string>
+    <string name="imageview">ImageView</string>
+    <string name="settings">Settings</string>
+</resources>
