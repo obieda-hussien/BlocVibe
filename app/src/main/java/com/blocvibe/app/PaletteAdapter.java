@@ -1,0 +1,49 @@
+package com.blocvibe.app;
+
+import android.view.LayoutInflater;
+import android.view.ViewGroup;
+import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.RecyclerView;
+import com.blocvibe.app.databinding.ListItemPaletteBinding;
+import java.util.List;
+
+public class PaletteAdapter extends RecyclerView.Adapter<PaletteAdapter.PaletteViewHolder> {
+
+    private List<String> items;
+
+    public PaletteAdapter(List<String> items) {
+        this.items = items;
+    }
+
+    @NonNull
+    @Override
+    public PaletteViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        ListItemPaletteBinding binding = ListItemPaletteBinding.inflate(
+                LayoutInflater.from(parent.getContext()), parent, false);
+        return new PaletteViewHolder(binding);
+    }
+
+    @Override
+    public void onBindViewHolder(@NonNull PaletteViewHolder holder, int position) {
+        String item = items.get(position);
+        holder.bind(item);
+    }
+
+    @Override
+    public int getItemCount() {
+        return items.size();
+    }
+
+    static class PaletteViewHolder extends RecyclerView.ViewHolder {
+        private ListItemPaletteBinding binding;
+
+        public PaletteViewHolder(ListItemPaletteBinding binding) {
+            super(binding.getRoot());
+            this.binding = binding;
+        }
+
+        public void bind(String item) {
+            binding.paletteItemText.setText(item);
+        }
+    }
+}

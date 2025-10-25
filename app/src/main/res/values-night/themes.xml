@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Night theme -->
+    <style name="Base.Theme.BlocVibe" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Primary colors -->
+        <item name="colorPrimary">@color/md_theme_primary_night</item>
+        <item name="colorOnPrimary">@color/md_theme_onPrimary_night</item>
+        <item name="colorPrimaryContainer">@color/md_theme_primaryContainer_night</item>
+        <item name="colorOnPrimaryContainer">@color/md_theme_onPrimaryContainer_night</item>
+        
+        <!-- Secondary colors -->
+        <item name="colorSecondary">@color/md_theme_secondary_night</item>
+        <item name="colorOnSecondary">@color/md_theme_onSecondary_night</item>
+        <item name="colorSecondaryContainer">@color/md_theme_secondaryContainer_night</item>
+        <item name="colorOnSecondaryContainer">@color/md_theme_onSecondaryContainer_night</item>
+        
+        <!-- Tertiary colors -->
+        <item name="colorTertiary">@color/md_theme_tertiary_night</item>
+        <item name="colorOnTertiary">@color/md_theme_onTertiary_night</item>
+        <item name="colorTertiaryContainer">@color/md_theme_tertiaryContainer_night</item>
+        <item name="colorOnTertiaryContainer">@color/md_theme_onTertiaryContainer_night</item>
+        
+        <!-- Error colors -->
+        <item name="colorError">@color/md_theme_error_night</item>
+        <item name="colorOnError">@color/md_theme_onError_night</item>
+        <item name="colorErrorContainer">@color/md_theme_errorContainer_night</item>
+        <item name="colorOnErrorContainer">@color/md_theme_onErrorContainer_night</item>
+        
+        <!-- Surface colors -->
+        <item name="android:colorBackground">@color/md_theme_background_night</item>
+        <item name="colorOnBackground">@color/md_theme_onBackground_night</item>
+        <item name="colorSurface">@color/md_theme_surface_night</item>
+        <item name="colorOnSurface">@color/md_theme_onSurface_night</item>
+        <item name="colorSurfaceVariant">@color/md_theme_surfaceVariant_night</item>
+        <item name="colorOnSurfaceVariant">@color/md_theme_onSurfaceVariant_night</item>
+        
+        <!-- Outline colors -->
+        <item name="colorOutline">@color/md_theme_outline_night</item>
+        <item name="colorOutlineVariant">@color/md_theme_outlineVariant_night</item>
+        
+        <!-- Inverse colors -->
+        <item name="colorSurfaceInverse">@color/md_theme_inverseSurface_night</item>
+        <item name="colorOnSurfaceInverse">@color/md_theme_inverseOnSurface_night</item>
+        <item name="colorPrimaryInverse">@color/md_theme_inversePrimary_night</item>
+    </style>
+</resources>
