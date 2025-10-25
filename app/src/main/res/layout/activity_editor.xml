@@ -28,4 +28,15 @@
         android:id="@+id/bottom_sheet_palette"
         layout="@layout/bottom_sheet_palette" />
 
+    <!-- FAB to toggle components palette -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab_toggle_palette"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end|bottom"
+        android:layout_margin="16dp"
+        android:contentDescription="@string/toggle_components"
+        app:srcCompat="@drawable/ic_code"
+        app:fabSize="normal" />
+
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

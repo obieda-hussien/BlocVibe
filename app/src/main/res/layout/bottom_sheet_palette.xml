@@ -6,35 +6,36 @@
     android:layout_height="wrap_content"
     android:layout_gravity="bottom"
     app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior"
-    app:behavior_peekHeight="100dp"
-    app:behavior_hideable="false"
+    app:behavior_peekHeight="0dp"
+    app:behavior_hideable="true"
+    app:behavior_skipCollapsed="false"
     style="@style/Widget.Material3.CardView.Elevated"
     app:cardCornerRadius="16dp"
-    app:cardElevation="8dp">
+    app:cardElevation="12dp"
+    android:backgroundTint="#FFFFFF">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="12dp"
-        android:background="?attr/colorSurface">
+        android:padding="16dp"
+        android:background="#FFFFFF">
 
         <!-- Drag handle indicator -->
         <View
-            android:layout_width="40dp"
-            android:layout_height="4dp"
+            android:layout_width="48dp"
+            android:layout_height="5dp"
             android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="8dp"
-            android:background="?attr/colorOnSurfaceVariant"
-            android:alpha="0.6"
-            android:backgroundTint="?attr/colorPrimary" />
+            android:layout_marginBottom="12dp"
+            android:background="@android:color/darker_gray"
+            android:backgroundTint="#6750A4" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:paddingBottom="8dp">
+            android:paddingBottom="12dp">
 
             <TextView
                 android:layout_width="0dp"
@@ -42,15 +43,17 @@
                 android:layout_weight="1"
                 android:text="@string/components_palette"
                 android:textAppearance="?attr/textAppearanceTitleMedium"
-                android:textColor="?attr/colorPrimary"
-                android:textStyle="bold" />
+                android:textColor="#6750A4"
+                android:textStyle="bold"
+                android:textSize="18sp" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/drag_to_canvas"
                 android:textAppearance="?attr/textAppearanceBodySmall"
-                android:textColor="?attr/colorOnSurfaceVariant" />
+                android:textColor="#666666"
+                android:textSize="12sp" />
 
         </LinearLayout>
 
@@ -59,7 +62,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:minHeight="250dp"
+            android:minHeight="280dp"
             app:layoutManager="androidx.recyclerview.widget.GridLayoutManager"
             app:spanCount="3" />
 

@@ -4,26 +4,28 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="4dp"
+    android:layout_margin="6dp"
     app:cardCornerRadius="12dp"
-    app:cardElevation="2dp"
+    app:cardElevation="4dp"
     app:strokeWidth="2dp"
-    app:strokeColor="?attr/colorPrimary"
+    app:strokeColor="#6750A4"
+    android:backgroundTint="#F3E5F5"
     style="@style/Widget.Material3.CardView.Filled">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="12dp"
-        android:gravity="center">
+        android:padding="16dp"
+        android:gravity="center"
+        android:background="#F3E5F5">
 
         <ImageView
             android:id="@+id/palette_item_icon"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
             android:src="@drawable/ic_code"
-            app:tint="?attr/colorPrimary"
+            app:tint="#6750A4"
             android:contentDescription="@string/components" />
 
         <TextView
@@ -33,9 +35,10 @@
             android:layout_marginTop="8dp"
             android:text="Button"
             android:gravity="center"
-            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textStyle="bold"
-            android:textColor="?attr/colorOnSurface" />
+            android:textColor="#4A148C"
+            android:textSize="13sp" />
 
     </LinearLayout>
 

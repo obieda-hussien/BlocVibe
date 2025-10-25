@@ -98,9 +98,9 @@ public class EditorActivity extends AppCompatActivity {
             }
         });
 
-        // Initialize Bottom Sheet
+        // Initialize Bottom Sheet - start hidden
         bottomSheetBehavior = BottomSheetBehavior.from(binding.bottomSheetPalette.getRoot());
-        bottomSheetBehavior.setState(BottomSheetBehavior.STATE_COLLAPSED);
+        bottomSheetBehavior.setState(BottomSheetBehavior.STATE_HIDDEN);
 
         // Set up palette RecyclerView with ComponentItems
         List<ComponentItem> paletteItems = new ArrayList<>();
@@ -114,11 +114,17 @@ public class EditorActivity extends AppCompatActivity {
         PaletteAdapter paletteAdapter = new PaletteAdapter(paletteItems);
         binding.bottomSheetPalette.paletteRecyclerView.setAdapter(paletteAdapter);
 
-        // Show usage tip on first load
-        binding.getRoot().postDelayed(() -> {
-            Toast.makeText(this, "Tip: Long press components below and drag to canvas", 
-                Toast.LENGTH_LONG).show();
-        }, 500);
+        // Set up FAB to toggle palette
+        binding.fabTogglePalette.setOnClickListener(v -> {
+            if (bottomSheetBehavior.getState() == BottomSheetBehavior.STATE_HIDDEN) {
+                bottomSheetBehavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+                Toast.makeText(this, "Long press any component and drag to canvas", 
+                    Toast.LENGTH_SHORT).show();
+            } else {
+                bottomSheetBehavior.setState(BottomSheetBehavior.STATE_HIDDEN);
+            }
+        });
+
 
         // Register for activity result from CodeEditorActivity
         codeEditorResultLauncher = registerForActivityResult(
