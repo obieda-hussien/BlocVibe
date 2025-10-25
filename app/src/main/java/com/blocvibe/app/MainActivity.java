@@ -7,16 +7,20 @@ import android.view.MenuItem;
 import android.widget.EditText;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.Observer;
 import com.blocvibe.app.databinding.ActivityMainBinding;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
 
     private ActivityMainBinding binding;
     private ProjectAdapter adapter;
-    private List<Project> projects;
+    private AppDatabase db;
+    private ExecutorService executorService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,18 +31,15 @@ public class MainActivity extends AppCompatActivity {
         // Set up toolbar
         setSupportActionBar(binding.mainToolbar);
 
-        // Initialize sample projects
-        projects = new ArrayList<>();
-        projects.add(new Project("My First Website", "Last modified: 2 hours ago"));
-        projects.add(new Project("Portfolio Page", "Last modified: Yesterday"));
-        projects.add(new Project("Landing Page", "Last modified: 3 days ago"));
-        projects.add(new Project("Blog Template", "Last modified: 1 week ago"));
+        // Initialize database and executor
+        db = AppDatabase.getInstance(this);
+        executorService = Executors.newSingleThreadExecutor();
 
         // Set up RecyclerView
-        adapter = new ProjectAdapter(projects, new ProjectAdapter.OnProjectClickListener() {
+        adapter = new ProjectAdapter(new ArrayList<>(), new ProjectAdapter.OnProjectClickListener() {
             @Override
             public void onProjectClick(Project project) {
-                openEditor(project.getName());
+                openEditor(project.id);
             }
 
             @Override
@@ -48,6 +49,14 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         binding.projectsRecyclerView.setAdapter(adapter);
+
+        // Observe projects from database
+        db.projectDao().getAllProjects().observe(this, new Observer<List<Project>>() {
+            @Override
+            public void onChanged(List<Project> projects) {
+                adapter.updateProjects(projects);
+            }
+        });
 
         // Set up FAB
         binding.fabNewProject.setOnClickListener(v -> showNewProjectDialog());
@@ -79,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
                 .setPositiveButton(R.string.create, (dialog, which) -> {
                     String projectName = input.getText().toString().trim();
                     if (!projectName.isEmpty()) {
-                        openEditor(projectName);
+                        createNewProject(projectName);
                     } else {
                         Toast.makeText(MainActivity.this, "Project name cannot be empty", 
                                 Toast.LENGTH_SHORT).show();
@@ -89,9 +98,30 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    private void openEditor(String projectName) {
+    private void createNewProject(String projectName) {
+        executorService.execute(() -> {
+            Project newProject = new Project();
+            newProject.name = projectName;
+            newProject.htmlContent = "<h1>New Project</h1>";
+            newProject.cssContent = "/* Add your CSS here */";
+            newProject.jsContent = "// Add your JavaScript here";
+            newProject.lastModified = System.currentTimeMillis();
+            
+            long newProjectId = db.projectDao().insertProject(newProject);
+            
+            runOnUiThread(() -> openEditor(newProjectId));
+        });
+    }
+
+    private void openEditor(long projectId) {
         Intent intent = new Intent(this, EditorActivity.class);
-        intent.putExtra("project_name", projectName);
+        intent.putExtra("PROJECT_ID", projectId);
         startActivity(intent);
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        executorService.shutdown();
     }
 }

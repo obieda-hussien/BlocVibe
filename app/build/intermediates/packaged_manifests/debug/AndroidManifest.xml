@@ -40,6 +40,14 @@
         <activity
             android:name="com.blocvibe.app.EditorActivity"
             android:exported="false" />
+        <activity
+            android:name="com.blocvibe.app.CodeEditorActivity"
+            android:exported="false" />
+
+        <service
+            android:name="androidx.room.MultiInstanceInvalidationService"
+            android:directBootAware="true"
+            android:exported="false" />
 
         <provider
             android:name="androidx.startup.InitializationProvider"
