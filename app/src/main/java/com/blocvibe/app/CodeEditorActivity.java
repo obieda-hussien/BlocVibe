@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
+import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
 import com.blocvibe.app.databinding.ActivityCodeEditorBinding;
 import com.google.android.material.tabs.TabLayout;
@@ -73,6 +74,14 @@ public class CodeEditorActivity extends AppCompatActivity {
                 // Nothing needed here
             }
         });
+
+        // Handle back button press
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                saveAndFinish();
+            }
+        });
     }
 
     @Override
@@ -86,7 +95,7 @@ public class CodeEditorActivity extends AppCompatActivity {
         int id = item.getItemId();
         
         if (id == android.R.id.home) {
-            finish();
+            saveAndFinish();
             return true;
         } else if (id == R.id.action_save_code) {
             saveAndFinish();
@@ -123,10 +132,5 @@ public class CodeEditorActivity extends AppCompatActivity {
         
         setResult(Activity.RESULT_OK, resultIntent);
         finish();
-    }
-
-    @Override
-    public void onBackPressed() {
-        saveAndFinish();
     }
 }
