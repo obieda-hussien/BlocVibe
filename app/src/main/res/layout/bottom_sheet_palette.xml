@@ -6,36 +6,51 @@
     android:layout_height="wrap_content"
     android:layout_gravity="bottom"
     app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior"
-    app:behavior_peekHeight="80dp"
+    app:behavior_peekHeight="100dp"
     app:behavior_hideable="false"
     style="@style/Widget.Material3.CardView.Elevated"
-    app:cardCornerRadius="16dp">
+    app:cardCornerRadius="16dp"
+    app:cardElevation="8dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="12dp"
+        android:background="?attr/colorSurface">
+
+        <!-- Drag handle indicator -->
+        <View
+            android:layout_width="40dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="8dp"
+            android:background="?attr/colorOnSurfaceVariant"
+            android:alpha="0.6"
+            android:backgroundTint="?attr/colorPrimary" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <View
-                android:layout_width="32dp"
-                android:layout_height="4dp"
-                android:layout_marginEnd="8dp"
-                android:background="?attr/colorOnSurfaceVariant"
-                android:alpha="0.4" />
+            android:gravity="center_vertical"
+            android:paddingBottom="8dp">
 
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="@string/components"
-                android:textAppearance="?attr/textAppearanceTitleMedium" />
+                android:text="@string/components_palette"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textColor="?attr/colorPrimary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/drag_to_canvas"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?attr/colorOnSurfaceVariant" />
 
         </LinearLayout>
 
@@ -43,8 +58,8 @@
             android:id="@+id/palette_recycler_view"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:minHeight="200dp"
+            android:layout_marginTop="8dp"
+            android:minHeight="250dp"
             app:layoutManager="androidx.recyclerview.widget.GridLayoutManager"
             app:spanCount="3" />
 

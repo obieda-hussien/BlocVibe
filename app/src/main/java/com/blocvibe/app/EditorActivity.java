@@ -114,6 +114,12 @@ public class EditorActivity extends AppCompatActivity {
         PaletteAdapter paletteAdapter = new PaletteAdapter(paletteItems);
         binding.bottomSheetPalette.paletteRecyclerView.setAdapter(paletteAdapter);
 
+        // Show usage tip on first load
+        binding.getRoot().postDelayed(() -> {
+            Toast.makeText(this, "Tip: Long press components below and drag to canvas", 
+                Toast.LENGTH_LONG).show();
+        }, 500);
+
         // Register for activity result from CodeEditorActivity
         codeEditorResultLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),

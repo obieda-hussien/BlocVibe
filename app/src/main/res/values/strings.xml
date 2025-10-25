@@ -13,6 +13,8 @@
     <string name="view_code">View Code</string>
     <string name="editing">Editing: %s</string>
     <string name="components">Components</string>
+    <string name="components_palette">Components Palette</string>
+    <string name="drag_to_canvas">Long press &amp; drag</string>
     <string name="button">Button</string>
     <string name="textview">TextView</string>
     <string name="imageview">ImageView</string>
