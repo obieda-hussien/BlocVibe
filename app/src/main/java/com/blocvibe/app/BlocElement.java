@@ -46,8 +46,17 @@ public class BlocElement {
      * Constructor with tag
      */
     public BlocElement(String tag) {
-        this();
+        this.elementId = "bloc-" + UUID.randomUUID().toString().substring(0, 8);
         this.tag = tag;
+        this.textContent = "";
+        this.styles = new HashMap<>();
+        this.attributes = new HashMap<>();
+        this.children = new ArrayList<>();
+        this.parentId = null;
+        this.isSelected = false;
+        
+        // Set default ID attribute
+        this.attributes.put("id", this.elementId);
     }
     
     /**
