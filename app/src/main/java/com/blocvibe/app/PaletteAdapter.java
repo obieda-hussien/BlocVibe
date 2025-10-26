@@ -1,6 +1,8 @@
 package com.blocvibe.app;
 
+import android.content.ClipData;
 import android.view.LayoutInflater;
+import android.view.View;
 import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
@@ -9,9 +11,9 @@ import java.util.List;
 
 public class PaletteAdapter extends RecyclerView.Adapter<PaletteAdapter.PaletteViewHolder> {
 
-    private List<String> items;
+    private List<ComponentItem> items;
 
-    public PaletteAdapter(List<String> items) {
+    public PaletteAdapter(List<ComponentItem> items) {
         this.items = items;
     }
 
@@ -25,7 +27,7 @@ public class PaletteAdapter extends RecyclerView.Adapter<PaletteAdapter.PaletteV
 
     @Override
     public void onBindViewHolder(@NonNull PaletteViewHolder holder, int position) {
-        String item = items.get(position);
+        ComponentItem item = items.get(position);
         holder.bind(item);
     }
 
@@ -42,8 +44,17 @@ public class PaletteAdapter extends RecyclerView.Adapter<PaletteAdapter.PaletteV
             this.binding = binding;
         }
 
-        public void bind(String item) {
-            binding.paletteItemText.setText(item);
+        public void bind(ComponentItem item) {
+            binding.paletteItemText.setText(item.getName());
+            
+            // Set up long click listener for drag-and-drop
+            binding.getRoot().setOnLongClickListener(v -> {
+                ClipData.Item clipItem = new ClipData.Item(item.getHtmlTag());
+                ClipData dragData = new ClipData("COMPONENT", new String[]{"text/plain"}, clipItem);
+                View.DragShadowBuilder shadowBuilder = new View.DragShadowBuilder(v);
+                v.startDragAndDrop(dragData, shadowBuilder, v, 0);
+                return true;
+            });
         }
     }
 }

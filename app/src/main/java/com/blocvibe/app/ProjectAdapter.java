@@ -24,6 +24,11 @@ public class ProjectAdapter extends RecyclerView.Adapter<ProjectAdapter.ProjectV
         this.projects = projects;
         this.listener = listener;
     }
+    
+    public void updateProjects(List<Project> newProjects) {
+        this.projects = newProjects;
+        notifyDataSetChanged();
+    }
 
     @NonNull
     @Override

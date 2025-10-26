@@ -27,6 +27,10 @@
             android:name=".EditorActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".CodeEditorActivity"
+            android:exported="false" />
+
     </application>
 
 </manifest>
