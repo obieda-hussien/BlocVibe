@@ -113,32 +113,18 @@ public class EditorActivity extends AppCompatActivity {
                             // Extract tag from dropped component HTML
                             String tag = extractTagFromHtml(droppedHtml);
                             if (tag != null) {
-                                BlocElement newElement = new BlocElement(tag);
+                                // Get drop coordinates
+                                float x = event.getX();
+                                float y = event.getY();
                                 
-                                // Set default text content based on tag
-                                if (tag.equals("button")) {
-                                    newElement.textContent = "Click Me";
-                                } else if (tag.equals("p")) {
-                                    newElement.textContent = "Lorem ipsum dolor sit amet.";
-                                } else if (tag.equals("h2")) {
-                                    newElement.textContent = "Heading";
-                                } else if (tag.equals("a")) {
-                                    newElement.textContent = "Link";
-                                    newElement.attributes.put("href", "#");
-                                } else if (tag.equals("div")) {
-                                    newElement.textContent = "Container";
-                                    newElement.styles.put("padding", "10px");
-                                    newElement.styles.put("border", "1px solid #ccc");
-                                }
+                                // Convert Android DP coordinates to WebView's CSS pixels
+                                float density = binding.canvasWebview.getResources().getDisplayMetrics().density;
+                                float cssX = x / density;
+                                float cssY = y / density;
                                 
-                                // Check for nesting: add to selected element or root
-                                if (currentSelectedElement != null) {
-                                    currentSelectedElement.children.add(newElement);
-                                } else {
-                                    elementTree.add(newElement);
-                                }
-                                
-                                renderCanvas();
+                                // Call JavaScript function to handle the drop intelligently
+                                String jsCall = String.format("javascript:handleAndroidDrop('%s', %f, %f);", tag, cssX, cssY);
+                                binding.canvasWebview.evaluateJavascript(jsCall, null);
                             }
                         }
                         return true;
@@ -265,7 +251,8 @@ public class EditorActivity extends AppCompatActivity {
         backBtn.setOnClickListener(v -> {
             currentSelectedElement = null;
             binding.bottomSheetPalette.editorFlipper.setDisplayedChild(0); // Show palette
-            renderCanvas(); // Re-render to remove highlight
+            // Tell JS to clear highlight
+            binding.canvasWebview.evaluateJavascript("javascript:highlightElement(null);", null);
         });
 
         // Register for activity result from CodeEditorActivity
@@ -341,31 +328,138 @@ public class EditorActivity extends AppCompatActivity {
         // 1. Build HTML from the elementTree
         String generatedHtml = buildHtmlRecursive(elementTree);
 
-        // 2. Build the JS click-injection script
-        String jsInjectorScript = 
-            " <script>" +
-            "   document.querySelectorAll('body *').forEach(el => {" +
-            "     el.onclick = function(e) {" +
-            "       e.stopPropagation();" + // Stop click from bubbling up
-            "       AndroidBridge.onElementSelected(this.getAttribute('id'));" +
-            "     };" +
-            "   });" +
-            // Add a visual highlight for the selected element
-            "   if(window.currentSelected) {" +
-            "     var prevEl = document.getElementById(window.currentSelected);" +
-            "     if(prevEl) prevEl.style.outline = 'none';" +
+        // 2. Build the comprehensive JS script with Sortable.js integration
+        String jsInterfaceScript = 
+            // INJECT SORTABLE.JS LIBRARY
+            "<script>" + SortableJsProvider.SORTABLE_JS_MINIFIED + "</script>" +
+            
+            // INJECT OUR HELPER SCRIPT
+            "<script>" +
+            "   let currentSelectedId = null;" +
+            
+            // --- A. Initialize Sortable on all containers ---
+            "   function initializeSortable() {" +
+            "       const containers = document.querySelectorAll('body, div, .container');" +
+            "       containers.forEach(container => {" +
+            "           if (container._sortable) return;" + // Don't re-initialize
+            "           container._sortable = new Sortable(container, {" +
+            "               group: 'shared'," + // Allows nesting!
+            "               animation: 150," +
+            "               fallbackOnBody: true," +
+            "               swapThreshold: 0.65," +
+            "               onEnd: function (evt) {" + // Reordering existing element
+            "                   sendDomUpdate();" +
+            "               }," +
+            "               onAdd: function (evt) {" + // Element dropped from another list (nesting)
+            "                   sendDomUpdate();" +
+            "               }" +
+            "           });" +
+            "       });" +
             "   }" +
-            (currentSelectedElement != null ? 
-            "   var selected = document.getElementById('" + currentSelectedElement.elementId + "');" +
-            "   if(selected) {" +
-            "     selected.style.outline = '2px dashed #0D6EFD';" + // Highlight
-            "     window.currentSelected = '" + currentSelectedElement.elementId + "';" +
-            "   }" : "") +
-            " </script>";
+            
+            // --- B. Handle new element dropped from Android Palette ---
+            "   function handleAndroidDrop(tag, x, y) {" +
+            "       const newElement = document.createElement(tag);" +
+            "       const newId = 'bloc-' + Math.random().toString(36).substr(2, 8);" +
+            "       newElement.setAttribute('id', newId);" +
+            "       if(tag === 'button') { newElement.innerText = 'Click Me'; }" +
+            "       if(tag === 'p') { newElement.innerText = 'Lorem ipsum dolor sit amet.'; }" +
+            "       if(tag === 'h2') { newElement.innerText = 'Heading'; }" +
+            "       if(tag === 'a') { newElement.innerText = 'Link'; newElement.href = '#'; }" +
+            "       if(tag === 'img') { newElement.src = 'https://via.placeholder.com/150'; newElement.alt = 'placeholder'; }" +
+            "       if(tag === 'div') { newElement.innerText = 'Container'; newElement.style.padding = '10px'; newElement.style.border = '1px solid #ccc'; }" +
+            
+            "       const target = document.elementFromPoint(x, y) || document.body;" +
+            "       if (target.tagName === 'BODY' || target.classList.contains('container') || target.tagName === 'DIV') {" +
+            "           target.appendChild(newElement);" + // Drop inside
+            "       } else {" +
+            "           target.parentNode.insertBefore(newElement, target.nextSibling);" + // Drop after
+            "       }" +
+            "       initializeSortable();" + // Make the new element (and its children) draggable
+            "       sendDomUpdate();" + // Sync with Java
+            "   }" +
+            
+            // --- C. Handle element selection/highlighting ---
+            "   function highlightElement(elementId) {" +
+            "       if (currentSelectedId) {" +
+            "           const oldSelected = document.getElementById(currentSelectedId);" +
+            "           if (oldSelected) { oldSelected.style.outline = 'none'; }" +
+            "       }" +
+            "       if (elementId) {" +
+            "           const newSelected = document.getElementById(elementId);" +
+            "           if (newSelected) { newSelected.style.outline = '2px dashed #0D6EFD'; }" +
+            "           currentSelectedId = elementId;" +
+            "       }" +
+            "   }" +
+            
+            // --- D. Recursive function to build JSON from the live DOM ---
+            "   function buildModel(element) {" +
+            "       let children = [];" +
+            "       for (const child of element.children) {" +
+            "           if (child.id && child.id.startsWith('bloc-')) {" + // Only process our elements
+            "               children.push(buildModel(child));" +
+            "           }" +
+            "       }" +
+            "       let styleMap = {};" + // Convert style attribute to map
+            "       if(element.style) {" +
+            "           for(let i=0; i < element.style.length; i++) {" +
+            "               const key = element.style[i];" +
+            "               styleMap[key] = element.style[key];" +
+            "           }" +
+            "       }" +
+            "       let attrMap = {};" + // Get attributes
+            "       for (const attr of element.attributes) {" +
+            "           if(attr.name !== 'style') { attrMap[attr.name] = attr.value; }" +
+            "       }" +
+            "       return {" +
+            "           elementId: element.id," +
+            "           tag: element.tagName.toLowerCase()," +
+            "           textContent: (element.children.length === 0 && element.tagName !== 'IMG') ? element.innerText : null," +
+            "           styles: styleMap," +
+            "           attributes: attrMap," +
+            "           children: children" +
+            "       };" +
+            "   }" +
+            
+            // --- E. Main sync function (JS -> Java) ---
+            "   function sendDomUpdate() {" +
+            "       let model = [];" +
+            "       for (const el of document.body.children) {" +
+            "           if (el.id && el.id.startsWith('bloc-')) {" +
+            "               model.push(buildModel(el));" +
+            "           }" +
+            "       }" +
+            "       AndroidBridge.onDomUpdated(JSON.stringify(model));" +
+            "   }" +
+            
+            // --- F. Initialization ---
+            "   document.addEventListener('DOMContentLoaded', function() {" +
+            "       initializeSortable();" +
+            "       document.body.addEventListener('click', (e) => {" +
+            "           e.preventDefault();" +
+            "           e.stopPropagation();" +
+            "           let target = e.target;" +
+            "           while(target && (!target.id || !target.id.startsWith('bloc-'))) {" + // Find parent
+            "               target = target.parentNode;" +
+            "               if (target === document.body) { target = null; break; }" +
+            "           }" +
+            "           if (target && target.id) {" +
+            "               AndroidBridge.onElementSelected(target.id);" +
+            "           } else {" +
+            "               AndroidBridge.onElementSelected(null);" + // Clicked on body
+            "           }" +
+            "       }, true);" + // Use capture phase
+            "   });" +
+            "</script>";
 
         // 3. Combine and load
-        String fullHtml = "<html><head><style>" + currentProject.cssContent + "</style></head>" +
-                          "<body>" + generatedHtml + "</body>" + jsInjectorScript + "</html>";
+        String fullHtml = "<html><head><style>" +
+                          "   body { min-height: 100vh; }" + // Ensure body is droppable
+                          "   [style*='outline'] { box-shadow: 0 0 5px #0D6EFD; }" + // Better highlight
+                          "   .sortable-ghost { opacity: 0.4; background: #C8E6C9; }" + // Ghost class
+                          currentProject.cssContent + 
+                          "</style></head>" +
+                          "<body>" + generatedHtml + "</body>" + jsInterfaceScript + "</html>";
 
         binding.canvasWebview.loadDataWithBaseURL(null, fullHtml, "text/html", "UTF-8", null);
     }
@@ -457,10 +551,32 @@ public class EditorActivity extends AppCompatActivity {
     /**
      * JavaScript bridge callback methods
      */
+    
+    /**
+     * Called by WebAppInterface when the DOM is updated in JavaScript
+     * This receives the entire updated element tree from the WebView
+     */
+    public void handleDomUpdate(String elementsJson) {
+        if (elementsJson == null || elementsJson.isEmpty()) return;
+        
+        try {
+            // Update our Java data model from JSON
+            Type type = new TypeToken<ArrayList<BlocElement>>(){}.getType();
+            this.elementTree = gson.fromJson(elementsJson, type);
+            
+            // Save the new structure to the database (in background)
+            saveProject();
+        } catch (Exception e) {
+            Toast.makeText(this, "Error updating DOM: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+    
     public void handleElementSelection(String elementId) {
         if (elementId == null) {
             currentSelectedElement = null;
             binding.bottomSheetPalette.editorFlipper.setDisplayedChild(0); // Show palette
+            // Tell JS to clear highlight
+            binding.canvasWebview.evaluateJavascript("javascript:highlightElement(null);", null);
             return;
         }
 
@@ -485,8 +601,9 @@ public class EditorActivity extends AppCompatActivity {
             editWidth.setText(currentSelectedElement.styles.get("width"));
             editColor.setText(currentSelectedElement.styles.get("color"));
 
-            // 3. Re-render canvas to show highlight
-            renderCanvas(); 
+            // 3. Tell JS to highlight this element
+            String jsCall = "javascript:highlightElement('" + currentSelectedElement.elementId + "');";
+            binding.canvasWebview.evaluateJavascript(jsCall, null);
         }
     }
 
