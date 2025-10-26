@@ -46,6 +46,9 @@ public class EditorActivity extends AppCompatActivity {
     
     private ExecutorService executorService;
     private ActivityResultLauncher<Intent> codeEditorResultLauncher;
+    
+    // Track if WebView page is loaded
+    private boolean isWebViewReady = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -75,6 +78,31 @@ public class EditorActivity extends AppCompatActivity {
         binding.canvasWebview.getSettings().setJavaScriptEnabled(true);
         binding.canvasWebview.getSettings().setDomStorageEnabled(true);
         binding.canvasWebview.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
+        
+        // Enable WebView debugging for console.log
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+            android.webkit.WebView.setWebContentsDebuggingEnabled(true);
+        }
+        
+        // Set WebChromeClient to capture console logs
+        binding.canvasWebview.setWebChromeClient(new android.webkit.WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(android.webkit.ConsoleMessage consoleMessage) {
+                android.util.Log.d("WebView", consoleMessage.message() + " -- From line " +
+                        consoleMessage.lineNumber() + " of " + consoleMessage.sourceId());
+                return true;
+            }
+        });
+        
+        // Set WebViewClient to track page load
+        binding.canvasWebview.setWebViewClient(new android.webkit.WebViewClient() {
+            @Override
+            public void onPageFinished(android.webkit.WebView view, String url) {
+                super.onPageFinished(view, url);
+                isWebViewReady = true;
+                android.util.Log.d("EditorActivity", "WebView page finished loading");
+            }
+        });
 
         // Load project data
         db.projectDao().getProjectById(currentProjectId).observe(this, project -> {
@@ -122,9 +150,39 @@ public class EditorActivity extends AppCompatActivity {
                                 float cssX = x / density;
                                 float cssY = y / density;
                                 
+                                // Log the drop for debugging
+                                android.util.Log.d("EditorActivity", "Dropping element: " + tag + " at (" + cssX + ", " + cssY + ")");
+                                
                                 // Call JavaScript function to handle the drop intelligently
-                                String jsCall = String.format("javascript:handleAndroidDrop('%s', %f, %f);", tag, cssX, cssY);
-                                binding.canvasWebview.evaluateJavascript(jsCall, null);
+                                final String finalTag = tag;
+                                
+                                Runnable dropAction = new Runnable() {
+                                    int retries = 0;
+                                    
+                                    @Override
+                                    public void run() {
+                                        if (!isWebViewReady && retries < 10) {
+                                            // Wait for page to be ready, retry after 100ms
+                                            retries++;
+                                            android.util.Log.d("EditorActivity", "WebView not ready, retry " + retries);
+                                            binding.canvasWebview.postDelayed(this, 100);
+                                            return;
+                                        }
+                                        
+                                        String jsCall = String.format(
+                                            "if(typeof window.handleAndroidDrop === 'function') { " +
+                                            "  window.handleAndroidDrop('%s', %f, %f); " +
+                                            "} else { " +
+                                            "  console.error('handleAndroidDrop not available'); " +
+                                            "}", 
+                                            finalTag, cssX, cssY);
+                                        binding.canvasWebview.evaluateJavascript(jsCall, result -> {
+                                            android.util.Log.d("EditorActivity", "JS execution result: " + result);
+                                        });
+                                    }
+                                };
+                                
+                                binding.canvasWebview.post(dropAction);
                             }
                         }
                         return true;
@@ -481,6 +539,9 @@ public class EditorActivity extends AppCompatActivity {
     private void renderCanvas() {
         if (elementTree == null) elementTree = new ArrayList<>();
         if (currentProject == null) return;
+        
+        // Reset ready flag
+        isWebViewReady = false;
 
         // 1. Build HTML from the elementTree
         String generatedHtml = buildHtmlRecursive(elementTree);
