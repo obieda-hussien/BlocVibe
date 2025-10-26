@@ -12,23 +12,25 @@ public class Project {
     @ColumnInfo(name = "project_name")
     public String name;
     
-    @ColumnInfo(name = "html_content")
-    public String htmlContent;
+    // Removed htmlContent - now using structured BlocElement model
     
     @ColumnInfo(name = "css_content")
-    public String cssContent;
+    public String cssContent;  // Global styles
     
     @ColumnInfo(name = "js_content")
-    public String jsContent;
+    public String jsContent;   // Global scripts
+    
+    @ColumnInfo(name = "elements_json")
+    public String elementsJson;  // JSON serialization of List<BlocElement>
     
     @ColumnInfo(name = "last_modified")
     public long lastModified;
 
     public Project() {
         // Default constructor for Room
-        this.htmlContent = "";
         this.cssContent = "";
         this.jsContent = "";
+        this.elementsJson = "[]";  // Empty array as default
         this.lastModified = System.currentTimeMillis();
     }
 

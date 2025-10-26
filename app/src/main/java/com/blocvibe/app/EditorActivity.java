@@ -17,6 +17,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.blocvibe.app.databinding.ActivityEditorBinding;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.snackbar.Snackbar;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -29,7 +32,12 @@ public class EditorActivity extends AppCompatActivity {
     private Project currentProject;
     private AppDatabase db;
     private long currentProjectId;
-    private StringBuilder htmlBuilder;
+    
+    // Phase 3: New structured data model fields
+    private List<BlocElement> elementTree;  // Main data model
+    private BlocElement currentSelectedElement;
+    private Gson gson = new Gson();
+    
     private ExecutorService executorService;
     private ActivityResultLauncher<Intent> codeEditorResultLauncher;
 
@@ -57,14 +65,24 @@ public class EditorActivity extends AppCompatActivity {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
 
-        // Initialize WebView
+        // Initialize WebView with JavaScript Bridge
         binding.canvasWebview.getSettings().setJavaScriptEnabled(true);
+        binding.canvasWebview.getSettings().setDomStorageEnabled(true);
+        binding.canvasWebview.addJavascriptInterface(new WebAppInterface(this), "Android");
 
         // Load project data
         db.projectDao().getProjectById(currentProjectId).observe(this, project -> {
             if (project != null) {
                 this.currentProject = project;
-                this.htmlBuilder = new StringBuilder(project.htmlContent);
+                
+                // Deserialize element tree from JSON
+                if (project.elementsJson != null && !project.elementsJson.isEmpty()) {
+                    Type listType = new TypeToken<List<BlocElement>>(){}.getType();
+                    elementTree = gson.fromJson(project.elementsJson, listType);
+                } else {
+                    elementTree = new ArrayList<>();
+                }
+                
                 if (getSupportActionBar() != null) {
                     getSupportActionBar().setTitle(project.name);
                 }
@@ -85,9 +103,11 @@ public class EditorActivity extends AppCompatActivity {
                         ClipData clipData = event.getClipData();
                         if (clipData != null && clipData.getItemCount() > 0) {
                             String droppedHtml = clipData.getItemAt(0).getText().toString();
-                            htmlBuilder.append(droppedHtml);
-                            if (currentProject != null) {
-                                currentProject.htmlContent = htmlBuilder.toString();
+                            
+                            // Create a new BlocElement from dropped component
+                            BlocElement newElement = createElementFromHtml(droppedHtml);
+                            if (newElement != null) {
+                                elementTree.add(newElement);
                                 refreshWebView();
                             }
                         }
@@ -135,10 +155,18 @@ public class EditorActivity extends AppCompatActivity {
                     if (result.getResultCode() == RESULT_OK && result.getData() != null) {
                         Intent data = result.getData();
                         if (currentProject != null) {
-                            currentProject.htmlContent = data.getStringExtra("HTML_RESULT");
+                            // Update global CSS and JS
                             currentProject.cssContent = data.getStringExtra("CSS_RESULT");
                             currentProject.jsContent = data.getStringExtra("JS_RESULT");
-                            htmlBuilder = new StringBuilder(currentProject.htmlContent);
+                            
+                            // Note: HTML editing is now handled through element tree
+                            // For backwards compatibility, we parse the HTML if provided
+                            String htmlResult = data.getStringExtra("HTML_RESULT");
+                            if (htmlResult != null && !htmlResult.isEmpty()) {
+                                // Could parse and update element tree here
+                                // For now, just refresh
+                            }
+                            
                             refreshWebView();
                             saveProject();
                         }
@@ -171,7 +199,9 @@ public class EditorActivity extends AppCompatActivity {
         } else if (id == R.id.action_view_code) {
             if (currentProject != null) {
                 Intent intent = new Intent(this, CodeEditorActivity.class);
-                intent.putExtra("HTML", currentProject.htmlContent);
+                // Generate HTML from element tree
+                String generatedHtml = generateHtmlFromElements();
+                intent.putExtra("HTML", generatedHtml);
                 intent.putExtra("CSS", currentProject.cssContent);
                 intent.putExtra("JS", currentProject.jsContent);
                 codeEditorResultLauncher.launch(intent);
@@ -185,10 +215,28 @@ public class EditorActivity extends AppCompatActivity {
     private void refreshWebView() {
         if (currentProject == null) return;
         
+        // Generate HTML from element tree
+        StringBuilder bodyHtml = new StringBuilder();
+        for (BlocElement element : elementTree) {
+            bodyHtml.append(element.toHtml());
+        }
+        
+        // Add JavaScript bridge script for element selection
+        String bridgeScript = "<script>" +
+            "document.addEventListener('click', function(e) {" +
+            "  var el = e.target;" +
+            "  if (el.id && Android) {" +
+            "    Android.onElementSelected(el.id);" +
+            "    e.preventDefault();" +
+            "  }" +
+            "});" +
+            "</script>";
+        
         String fullHtml = "<html><head><style>" + 
             currentProject.cssContent + 
             "</style></head><body>" + 
-            currentProject.htmlContent + 
+            bodyHtml.toString() + 
+            bridgeScript +
             "<script>" + 
             currentProject.jsContent + 
             "</script></body></html>";
@@ -199,13 +247,87 @@ public class EditorActivity extends AppCompatActivity {
     private void saveProject() {
         if (currentProject == null) return;
         
+        // Serialize element tree to JSON
+        currentProject.elementsJson = gson.toJson(elementTree);
         currentProject.lastModified = System.currentTimeMillis();
+        
         executorService.execute(() -> {
             db.projectDao().updateProject(currentProject);
             runOnUiThread(() -> {
                 Snackbar.make(binding.getRoot(), "Project Saved", Snackbar.LENGTH_SHORT).show();
             });
         });
+    }
+    
+    /**
+     * Helper method to create BlocElement from HTML string
+     */
+    private BlocElement createElementFromHtml(String html) {
+        // Simple parser for common components
+        if (html.contains("<h2>")) {
+            String text = html.replaceAll("<.*?>", "");
+            return BlocElement.createHeading(text, 2);
+        } else if (html.contains("<p>")) {
+            String text = html.replaceAll("<.*?>", "");
+            return BlocElement.createParagraph(text);
+        } else if (html.contains("<button>")) {
+            String text = html.replaceAll("<.*?>", "");
+            return BlocElement.createButton(text);
+        } else if (html.contains("<a ")) {
+            String text = html.replaceAll("<.*?>", "");
+            return BlocElement.createLink(text, "#");
+        } else if (html.contains("<img ")) {
+            return BlocElement.createImage("https://via.placeholder.com/150", "placeholder");
+        } else if (html.contains("<div")) {
+            BlocElement div = BlocElement.createDiv();
+            div.textContent = "Container";
+            div.setStyle("padding", "10px");
+            div.setStyle("border", "1px solid #ccc");
+            return div;
+        }
+        return null;
+    }
+    
+    /**
+     * Generate HTML from element tree for code editor
+     */
+    private String generateHtmlFromElements() {
+        StringBuilder html = new StringBuilder();
+        for (BlocElement element : elementTree) {
+            html.append(element.toHtml()).append("\n");
+        }
+        return html.toString();
+    }
+    
+    /**
+     * JavaScript bridge callback methods
+     */
+    public void handleElementSelection(String elementId) {
+        // Find element in tree
+        for (BlocElement element : elementTree) {
+            BlocElement found = element.findById(elementId);
+            if (found != null) {
+                currentSelectedElement = found;
+                Toast.makeText(this, "Selected: " + found.tag, Toast.LENGTH_SHORT).show();
+                break;
+            }
+        }
+    }
+    
+    public void handleElementTextChange(String elementId, String newText) {
+        for (BlocElement element : elementTree) {
+            BlocElement found = element.findById(elementId);
+            if (found != null) {
+                found.textContent = newText;
+                saveProject();
+                break;
+            }
+        }
+    }
+    
+    public void onWebViewPageReady() {
+        // Called when WebView page is fully loaded
+        Toast.makeText(this, "Page loaded", Toast.LENGTH_SHORT).show();
     }
 
     @Override

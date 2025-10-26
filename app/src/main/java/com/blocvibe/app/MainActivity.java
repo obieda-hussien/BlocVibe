@@ -102,7 +102,8 @@ public class MainActivity extends AppCompatActivity {
         executorService.execute(() -> {
             Project newProject = new Project();
             newProject.name = projectName;
-            newProject.htmlContent = "<h1>New Project</h1>";
+            // Initialize with empty element tree as JSON
+            newProject.elementsJson = "[]";  
             newProject.cssContent = "/* Add your CSS here */";
             newProject.jsContent = "// Add your JavaScript here";
             newProject.lastModified = System.currentTimeMillis();
