@@ -167,10 +167,23 @@ public class EditorActivity extends AppCompatActivity {
         TextInputEditText editId = propertiesView.findViewById(R.id.edit_id);
         TextInputEditText editClass = propertiesView.findViewById(R.id.edit_class);
         TextInputEditText editWidth = propertiesView.findViewById(R.id.edit_width);
+        TextInputEditText editHeight = propertiesView.findViewById(R.id.edit_height);
         TextInputEditText editColor = propertiesView.findViewById(R.id.edit_color);
+        TextInputEditText editFontSize = propertiesView.findViewById(R.id.edit_font_size);
+        TextInputEditText editBackground = propertiesView.findViewById(R.id.edit_background);
+        TextInputEditText editPadding = propertiesView.findViewById(R.id.edit_padding);
+        TextInputEditText editMargin = propertiesView.findViewById(R.id.edit_margin);
+        TextInputEditText editTranslateX = propertiesView.findViewById(R.id.edit_translate_x);
+        TextInputEditText editTranslateY = propertiesView.findViewById(R.id.edit_translate_y);
+        TextInputEditText editScaleX = propertiesView.findViewById(R.id.edit_scale_x);
+        TextInputEditText editScaleY = propertiesView.findViewById(R.id.edit_scale_y);
+        TextInputEditText editRotate = propertiesView.findViewById(R.id.edit_rotate);
+        TextInputEditText editFlexDirection = propertiesView.findViewById(R.id.edit_flex_direction);
+        TextInputEditText editJustifyContent = propertiesView.findViewById(R.id.edit_justify_content);
+        TextInputEditText editAlignItems = propertiesView.findViewById(R.id.edit_align_items);
         MaterialButton backBtn = propertiesView.findViewById(R.id.back_to_palette_btn);
 
-        // Add TextWatchers for live property editing
+        // Add TextWatchers for attributes
         editId.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -183,7 +196,6 @@ public class EditorActivity extends AppCompatActivity {
                 if (currentSelectedElement != null) {
                     String newId = s.toString();
                     currentSelectedElement.attributes.put("id", newId);
-                    // Update element ID in the WebView
                     String js = "var el = document.getElementById('" + currentSelectedElement.elementId + "');" +
                                "if(el) { el.setAttribute('id', '" + newId + "'); }";
                     binding.canvasWebview.evaluateJavascript(js, null);
@@ -203,50 +215,195 @@ public class EditorActivity extends AppCompatActivity {
                 if (currentSelectedElement != null) {
                     String className = s.toString();
                     currentSelectedElement.attributes.put("class", className);
-                    // Live-update the WebView
                     String js = "document.getElementById('" + currentSelectedElement.elementId + "').className = '" + className + "';";
                     binding.canvasWebview.evaluateJavascript(js, null);
                 }
             }
         });
 
+        // Add TextWatchers for style properties
         editWidth.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {}
-            
             @Override
             public void afterTextChanged(Editable s) {
                 if (currentSelectedElement != null) {
-                    String width = s.toString();
-                    currentSelectedElement.styles.put("width", width);
-                    // Live-update the WebView
-                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.width = '" + width + "';";
+                    String value = s.toString();
+                    currentSelectedElement.styles.put("width", value);
+                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.width = '" + value + "';";
+                    binding.canvasWebview.evaluateJavascript(js, null);
+                }
+            }
+        });
+        
+        editHeight.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String value = s.toString();
+                    currentSelectedElement.styles.put("height", value);
+                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.height = '" + value + "';";
+                    binding.canvasWebview.evaluateJavascript(js, null);
+                }
+            }
+        });
+        
+        editColor.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String value = s.toString();
+                    currentSelectedElement.styles.put("color", value);
+                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.color = '" + value + "';";
+                    binding.canvasWebview.evaluateJavascript(js, null);
+                }
+            }
+        });
+        
+        editFontSize.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String value = s.toString();
+                    currentSelectedElement.styles.put("fontSize", value);
+                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.fontSize = '" + value + "';";
+                    binding.canvasWebview.evaluateJavascript(js, null);
+                }
+            }
+        });
+        
+        editBackground.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String value = s.toString();
+                    currentSelectedElement.styles.put("background", value);
+                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.background = '" + value + "';";
+                    binding.canvasWebview.evaluateJavascript(js, null);
+                }
+            }
+        });
+        
+        editPadding.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String value = s.toString();
+                    currentSelectedElement.styles.put("padding", value);
+                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.padding = '" + value + "';";
+                    binding.canvasWebview.evaluateJavascript(js, null);
+                }
+            }
+        });
+        
+        editMargin.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String value = s.toString();
+                    currentSelectedElement.styles.put("margin", value);
+                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.margin = '" + value + "';";
+                    binding.canvasWebview.evaluateJavascript(js, null);
+                }
+            }
+        });
+        
+        // Add TextWatchers for flex layout properties
+        editFlexDirection.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String value = s.toString();
+                    currentSelectedElement.styles.put("display", "flex");
+                    currentSelectedElement.styles.put("flexDirection", value);
+                    String js = "var el = document.getElementById('" + currentSelectedElement.elementId + "');" +
+                               "if(el) { el.style.display = 'flex'; el.style.flexDirection = '" + value + "'; }";
+                    binding.canvasWebview.evaluateJavascript(js, null);
+                }
+            }
+        });
+        
+        editJustifyContent.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String value = s.toString();
+                    currentSelectedElement.styles.put("justifyContent", value);
+                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.justifyContent = '" + value + "';";
+                    binding.canvasWebview.evaluateJavascript(js, null);
+                }
+            }
+        });
+        
+        editAlignItems.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String value = s.toString();
+                    currentSelectedElement.styles.put("alignItems", value);
+                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.alignItems = '" + value + "';";
                     binding.canvasWebview.evaluateJavascript(js, null);
                 }
             }
         });
 
-        editColor.addTextChangedListener(new TextWatcher() {
+        // Add TextWatchers for transform properties
+        TextWatcher transformWatcher = new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {}
-            
             @Override
             public void afterTextChanged(Editable s) {
                 if (currentSelectedElement != null) {
-                    String color = s.toString();
-                    currentSelectedElement.styles.put("color", color);
-                    // Live-update the WebView
-                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.color = '" + color + "';";
-                    binding.canvasWebview.evaluateJavascript(js, null);
+                    updateTransform();
                 }
             }
-        });
+        };
+        
+        editTranslateX.addTextChangedListener(transformWatcher);
+        editTranslateY.addTextChangedListener(transformWatcher);
+        editScaleX.addTextChangedListener(transformWatcher);
+        editScaleY.addTextChangedListener(transformWatcher);
+        editRotate.addTextChangedListener(transformWatcher);
 
         backBtn.setOnClickListener(v -> {
             currentSelectedElement = null;
@@ -333,12 +490,15 @@ public class EditorActivity extends AppCompatActivity {
             // INJECT SORTABLE.JS LIBRARY
             "<script>" + SortableJsProvider.SORTABLE_JS_MINIFIED + "</script>" +
             
-            // INJECT OUR HELPER SCRIPT
+            // INJECT OUR HELPER SCRIPT - Define functions globally first
             "<script>" +
-            "   let currentSelectedId = null;" +
+            "   var currentSelectedId = null;" +
+            "   var sortableInitialized = false;" +
             
             // --- A. Initialize Sortable on all containers ---
-            "   function initializeSortable() {" +
+            "   window.initializeSortable = function() {" +
+            "       if (sortableInitialized) return;" +
+            "       sortableInitialized = true;" +
             "       const containers = document.querySelectorAll('body, div, .container');" +
             "       containers.forEach(container => {" +
             "           if (container._sortable) return;" + // Don't re-initialize
@@ -355,21 +515,23 @@ public class EditorActivity extends AppCompatActivity {
             "               }" +
             "           });" +
             "       });" +
-            "   }" +
+            "   };" +
             
             // --- B. Handle new element dropped from Android Palette ---
-            "   function handleAndroidDrop(tag, x, y) {" +
+            "   window.handleAndroidDrop = function(tag, x, y) {" +
+            "       console.log('handleAndroidDrop called with tag:', tag, 'x:', x, 'y:', y);" +
             "       const newElement = document.createElement(tag);" +
             "       const newId = 'bloc-' + Math.random().toString(36).substr(2, 8);" +
             "       newElement.setAttribute('id', newId);" +
             "       if(tag === 'button') { newElement.innerText = 'Click Me'; }" +
-            "       if(tag === 'p') { newElement.innerText = 'Lorem ipsum dolor sit amet.'; }" +
-            "       if(tag === 'h2') { newElement.innerText = 'Heading'; }" +
-            "       if(tag === 'a') { newElement.innerText = 'Link'; newElement.href = '#'; }" +
-            "       if(tag === 'img') { newElement.src = 'https://via.placeholder.com/150'; newElement.alt = 'placeholder'; }" +
-            "       if(tag === 'div') { newElement.innerText = 'Container'; newElement.style.padding = '10px'; newElement.style.border = '1px solid #ccc'; }" +
+            "       else if(tag === 'p') { newElement.innerText = 'Lorem ipsum dolor sit amet.'; }" +
+            "       else if(tag === 'h2') { newElement.innerText = 'Heading'; }" +
+            "       else if(tag === 'a') { newElement.innerText = 'Link'; newElement.href = '#'; }" +
+            "       else if(tag === 'img') { newElement.src = 'https://via.placeholder.com/150'; newElement.alt = 'placeholder'; }" +
+            "       else if(tag === 'div') { newElement.innerText = 'Container'; newElement.style.padding = '10px'; newElement.style.border = '1px solid #ccc'; newElement.style.minHeight = '50px'; }" +
             
             "       const target = document.elementFromPoint(x, y) || document.body;" +
+            "       console.log('Target element:', target.tagName, target.id);" +
             "       if (target.tagName === 'BODY' || target.classList.contains('container') || target.tagName === 'DIV') {" +
             "           target.appendChild(newElement);" + // Drop inside
             "       } else {" +
@@ -377,10 +539,10 @@ public class EditorActivity extends AppCompatActivity {
             "       }" +
             "       initializeSortable();" + // Make the new element (and its children) draggable
             "       sendDomUpdate();" + // Sync with Java
-            "   }" +
+            "   };" +
             
             // --- C. Handle element selection/highlighting ---
-            "   function highlightElement(elementId) {" +
+            "   window.highlightElement = function(elementId) {" +
             "       if (currentSelectedId) {" +
             "           const oldSelected = document.getElementById(currentSelectedId);" +
             "           if (oldSelected) { oldSelected.style.outline = 'none'; }" +
@@ -390,10 +552,10 @@ public class EditorActivity extends AppCompatActivity {
             "           if (newSelected) { newSelected.style.outline = '2px dashed #0D6EFD'; }" +
             "           currentSelectedId = elementId;" +
             "       }" +
-            "   }" +
+            "   };" +
             
             // --- D. Recursive function to build JSON from the live DOM ---
-            "   function buildModel(element) {" +
+            "   window.buildModel = function(element) {" +
             "       let children = [];" +
             "       for (const child of element.children) {" +
             "           if (child.id && child.id.startsWith('bloc-')) {" + // Only process our elements
@@ -419,10 +581,10 @@ public class EditorActivity extends AppCompatActivity {
             "           attributes: attrMap," +
             "           children: children" +
             "       };" +
-            "   }" +
+            "   };" +
             
             // --- E. Main sync function (JS -> Java) ---
-            "   function sendDomUpdate() {" +
+            "   window.sendDomUpdate = function() {" +
             "       let model = [];" +
             "       for (const el of document.body.children) {" +
             "           if (el.id && el.id.startsWith('bloc-')) {" +
@@ -430,26 +592,33 @@ public class EditorActivity extends AppCompatActivity {
             "           }" +
             "       }" +
             "       AndroidBridge.onDomUpdated(JSON.stringify(model));" +
-            "   }" +
+            "   };" +
             
-            // --- F. Initialization ---
-            "   document.addEventListener('DOMContentLoaded', function() {" +
-            "       initializeSortable();" +
-            "       document.body.addEventListener('click', (e) => {" +
-            "           e.preventDefault();" +
-            "           e.stopPropagation();" +
-            "           let target = e.target;" +
-            "           while(target && (!target.id || !target.id.startsWith('bloc-'))) {" + // Find parent
-            "               target = target.parentNode;" +
-            "               if (target === document.body) { target = null; break; }" +
-            "           }" +
-            "           if (target && target.id) {" +
-            "               AndroidBridge.onElementSelected(target.id);" +
-            "           } else {" +
-            "               AndroidBridge.onElementSelected(null);" + // Clicked on body
-            "           }" +
-            "       }, true);" + // Use capture phase
-            "   });" +
+            // --- F. Initialization - Run immediately and on DOMContentLoaded ---
+            "   (function() {" +
+            "       function init() {" +
+            "           initializeSortable();" +
+            "           document.body.addEventListener('click', (e) => {" +
+            "               e.preventDefault();" +
+            "               e.stopPropagation();" +
+            "               let target = e.target;" +
+            "               while(target && (!target.id || !target.id.startsWith('bloc-'))) {" + // Find parent
+            "                   target = target.parentNode;" +
+            "                   if (target === document.body) { target = null; break; }" +
+            "               }" +
+            "               if (target && target.id) {" +
+            "                   AndroidBridge.onElementSelected(target.id);" +
+            "               } else {" +
+            "                   AndroidBridge.onElementSelected(null);" + // Clicked on body
+            "               }" +
+            "           }, true);" + // Use capture phase
+            "       }" +
+            "       if (document.readyState === 'loading') {" +
+            "           document.addEventListener('DOMContentLoaded', init);" +
+            "       } else {" +
+            "           init();" +
+            "       }" +
+            "   })();" +
             "</script>";
 
         // 3. Combine and load
@@ -590,16 +759,62 @@ public class EditorActivity extends AppCompatActivity {
             // 2. Populate the fields (using the inflated view)
             View propertiesView = binding.bottomSheetPalette.editorFlipper.getChildAt(1);
             TextView label = propertiesView.findViewById(R.id.selected_element_label);
+            TextView containerLabel = propertiesView.findViewById(R.id.container_properties_label);
+            
             TextInputEditText editId = propertiesView.findViewById(R.id.edit_id);
             TextInputEditText editClass = propertiesView.findViewById(R.id.edit_class);
             TextInputEditText editWidth = propertiesView.findViewById(R.id.edit_width);
+            TextInputEditText editHeight = propertiesView.findViewById(R.id.edit_height);
             TextInputEditText editColor = propertiesView.findViewById(R.id.edit_color);
+            TextInputEditText editFontSize = propertiesView.findViewById(R.id.edit_font_size);
+            TextInputEditText editBackground = propertiesView.findViewById(R.id.edit_background);
+            TextInputEditText editPadding = propertiesView.findViewById(R.id.edit_padding);
+            TextInputEditText editMargin = propertiesView.findViewById(R.id.edit_margin);
+            TextInputEditText editTranslateX = propertiesView.findViewById(R.id.edit_translate_x);
+            TextInputEditText editTranslateY = propertiesView.findViewById(R.id.edit_translate_y);
+            TextInputEditText editScaleX = propertiesView.findViewById(R.id.edit_scale_x);
+            TextInputEditText editScaleY = propertiesView.findViewById(R.id.edit_scale_y);
+            TextInputEditText editRotate = propertiesView.findViewById(R.id.edit_rotate);
+            TextInputEditText editFlexDirection = propertiesView.findViewById(R.id.edit_flex_direction);
+            TextInputEditText editJustifyContent = propertiesView.findViewById(R.id.edit_justify_content);
+            TextInputEditText editAlignItems = propertiesView.findViewById(R.id.edit_align_items);
 
             label.setText("Editing: <" + currentSelectedElement.tag + ">");
+            
+            // Show/hide container properties based on element type
+            boolean isContainer = currentSelectedElement.tag.equals("div");
+            containerLabel.setVisibility(isContainer ? View.VISIBLE : View.GONE);
+            propertiesView.findViewById(R.id.edit_flex_direction_layout).setVisibility(isContainer ? View.VISIBLE : View.GONE);
+            propertiesView.findViewById(R.id.edit_justify_content_layout).setVisibility(isContainer ? View.VISIBLE : View.GONE);
+            propertiesView.findViewById(R.id.edit_align_items_layout).setVisibility(isContainer ? View.VISIBLE : View.GONE);
+            
+            // Populate attribute fields
             editId.setText(currentSelectedElement.attributes.get("id"));
             editClass.setText(currentSelectedElement.attributes.get("class"));
+            
+            // Populate style fields
             editWidth.setText(currentSelectedElement.styles.get("width"));
+            editHeight.setText(currentSelectedElement.styles.get("height"));
             editColor.setText(currentSelectedElement.styles.get("color"));
+            editFontSize.setText(currentSelectedElement.styles.get("fontSize"));
+            editBackground.setText(currentSelectedElement.styles.get("background"));
+            editPadding.setText(currentSelectedElement.styles.get("padding"));
+            editMargin.setText(currentSelectedElement.styles.get("margin"));
+            editFlexDirection.setText(currentSelectedElement.styles.get("flexDirection"));
+            editJustifyContent.setText(currentSelectedElement.styles.get("justifyContent"));
+            editAlignItems.setText(currentSelectedElement.styles.get("alignItems"));
+            
+            // Parse transform property if exists
+            String transform = currentSelectedElement.styles.get("transform");
+            if (transform != null && !transform.isEmpty()) {
+                parseTransform(transform, editTranslateX, editTranslateY, editScaleX, editScaleY, editRotate);
+            } else {
+                editTranslateX.setText("");
+                editTranslateY.setText("");
+                editScaleX.setText("");
+                editScaleY.setText("");
+                editRotate.setText("");
+            }
 
             // 3. Tell JS to highlight this element
             String jsCall = "javascript:highlightElement('" + currentSelectedElement.elementId + "');";
@@ -618,6 +833,88 @@ public class EditorActivity extends AppCompatActivity {
             }
         }
         return null; // Not found
+    }
+    
+    /**
+     * Parse transform CSS property into individual components
+     */
+    private void parseTransform(String transform, TextInputEditText editTranslateX, 
+                                TextInputEditText editTranslateY, TextInputEditText editScaleX,
+                                TextInputEditText editScaleY, TextInputEditText editRotate) {
+        // Parse transform string like "translateX(10px) translateY(20px) scaleX(1.5) scaleY(1.2) rotate(45deg)"
+        if (transform.contains("translateX(")) {
+            String val = transform.substring(transform.indexOf("translateX(") + 11);
+            val = val.substring(0, val.indexOf(")"));
+            editTranslateX.setText(val);
+        }
+        if (transform.contains("translateY(")) {
+            String val = transform.substring(transform.indexOf("translateY(") + 11);
+            val = val.substring(0, val.indexOf(")"));
+            editTranslateY.setText(val);
+        }
+        if (transform.contains("scaleX(")) {
+            String val = transform.substring(transform.indexOf("scaleX(") + 7);
+            val = val.substring(0, val.indexOf(")"));
+            editScaleX.setText(val);
+        }
+        if (transform.contains("scaleY(")) {
+            String val = transform.substring(transform.indexOf("scaleY(") + 7);
+            val = val.substring(0, val.indexOf(")"));
+            editScaleY.setText(val);
+        }
+        if (transform.contains("rotate(")) {
+            String val = transform.substring(transform.indexOf("rotate(") + 7);
+            val = val.substring(0, val.indexOf(")"));
+            editRotate.setText(val);
+        }
+    }
+    
+    /**
+     * Update transform property from individual components
+     */
+    private void updateTransform() {
+        if (currentSelectedElement == null) return;
+        
+        View propertiesView = binding.bottomSheetPalette.editorFlipper.getChildAt(1);
+        TextInputEditText editTranslateX = propertiesView.findViewById(R.id.edit_translate_x);
+        TextInputEditText editTranslateY = propertiesView.findViewById(R.id.edit_translate_y);
+        TextInputEditText editScaleX = propertiesView.findViewById(R.id.edit_scale_x);
+        TextInputEditText editScaleY = propertiesView.findViewById(R.id.edit_scale_y);
+        TextInputEditText editRotate = propertiesView.findViewById(R.id.edit_rotate);
+        
+        StringBuilder transform = new StringBuilder();
+        
+        String translateX = editTranslateX.getText().toString();
+        if (!translateX.isEmpty()) {
+            transform.append("translateX(").append(translateX).append(") ");
+        }
+        
+        String translateY = editTranslateY.getText().toString();
+        if (!translateY.isEmpty()) {
+            transform.append("translateY(").append(translateY).append(") ");
+        }
+        
+        String scaleX = editScaleX.getText().toString();
+        if (!scaleX.isEmpty()) {
+            transform.append("scaleX(").append(scaleX).append(") ");
+        }
+        
+        String scaleY = editScaleY.getText().toString();
+        if (!scaleY.isEmpty()) {
+            transform.append("scaleY(").append(scaleY).append(") ");
+        }
+        
+        String rotate = editRotate.getText().toString();
+        if (!rotate.isEmpty()) {
+            transform.append("rotate(").append(rotate).append(")");
+        }
+        
+        String transformValue = transform.toString().trim();
+        currentSelectedElement.styles.put("transform", transformValue);
+        
+        // Update WebView
+        String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.transform = '" + transformValue + "';";
+        binding.canvasWebview.evaluateJavascript(js, null);
     }
     
     public void handleElementTextChange(String elementId, String newText) {

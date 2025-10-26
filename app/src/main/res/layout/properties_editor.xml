@@ -69,5 +69,176 @@
                 android:layout_height="wrap_content" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_height_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Height (e.g., 100px or 100%)">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_height"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_font_size_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Font Size (e.g., 16px or 1.2em)">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_font_size"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_background_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Background Color (e.g., #FFFFFF)">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_background"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_padding_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Padding (e.g., 10px)">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_padding"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_margin_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Margin (e.g., 10px)">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_margin"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Transform Properties -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Transform Properties"
+            android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:textStyle="bold" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_translate_x_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Translate X (e.g., 10px)">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_translate_x"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_translate_y_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Translate Y (e.g., 10px)">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_translate_y"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_scale_x_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Scale X (e.g., 1.5)">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_scale_x"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="numberDecimal" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_scale_y_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Scale Y (e.g., 1.5)">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_scale_y"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="numberDecimal" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_rotate_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Rotate (e.g., 45deg)">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_rotate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Layout Properties (for containers) -->
+        <TextView
+            android:id="@+id/container_properties_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Container Layout"
+            android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_flex_direction_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Direction (row, column, row-reverse, column-reverse)"
+            android:visibility="gone">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_flex_direction"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_justify_content_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Justify Content (flex-start, center, space-between, etc.)"
+            android:visibility="gone">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_justify_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/edit_align_items_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Align Items (flex-start, center, stretch, etc.)"
+            android:visibility="gone">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_align_items"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </com.google.android.material.textfield.TextInputLayout>
+
     </LinearLayout>
 </ScrollView>
