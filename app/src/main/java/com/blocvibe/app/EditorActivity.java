@@ -78,6 +78,15 @@ public class EditorActivity extends AppCompatActivity {
         // Initialize WebView with JavaScript Bridge
         binding.canvasWebview.getSettings().setJavaScriptEnabled(true);
         binding.canvasWebview.getSettings().setDomStorageEnabled(true);
+        binding.canvasWebview.getSettings().setAllowFileAccess(true);
+        binding.canvasWebview.getSettings().setAllowContentAccess(true);
+        
+        // Enable touch and gesture support for Sortable.js
+        binding.canvasWebview.getSettings().setSupportZoom(false);
+        binding.canvasWebview.getSettings().setBuiltInZoomControls(false);
+        binding.canvasWebview.setVerticalScrollBarEnabled(true);
+        binding.canvasWebview.setHorizontalScrollBarEnabled(true);
+        
         binding.canvasWebview.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
         
         // Enable WebView debugging for console.log
@@ -601,21 +610,44 @@ public class EditorActivity extends AppCompatActivity {
             "               container._sortable = new Sortable(container, {" +
             "                   group: 'shared'," + // Allows nesting and cross-container dragging!
             "                   animation: 150," +
+            "                   easing: 'cubic-bezier(1, 0, 0, 1)'," +
             "                   fallbackOnBody: true," +
+            "                   forceFallback: true," + // CRITICAL: Force HTML5 fallback for WebView compatibility
             "                   swapThreshold: 0.65," +
+            "                   invertSwap: false," +
+            "                   direction: 'vertical'," +
             "                   handle: false," + // Allow dragging from anywhere on the element
             "                   draggable: '[id^=\"bloc-\"]'," + // Only elements with bloc- ID are draggable
+            "                   ghostClass: 'sortable-ghost'," +
+            "                   chosenClass: 'sortable-chosen'," +
+            "                   dragClass: 'sortable-drag'," +
+            "                   delay: 100," + // Small delay before drag starts (helps with WebView touch)
+            "                   delayOnTouchOnly: true," + // Only delay on touch devices
+            "                   touchStartThreshold: 5," + // Pixels of movement before canceling drag
+            "                   onStart: function(evt) {" +
+            "                       console.log('Sortable drag started:', evt.item.id);" +
+            "                   }," +
             "                   onEnd: function (evt) {" + // Reordering existing element
-            "                       console.log('Sortable onEnd triggered');" +
+            "                       console.log('Sortable onEnd - from:', evt.oldIndex, 'to:', evt.newIndex);" +
             "                       sendDomUpdate();" +
             "                   }," +
             "                   onAdd: function (evt) {" + // Element dropped from another list (nesting)
-            "                       console.log('Sortable onAdd triggered');" +
+            "                       console.log('Sortable onAdd - item added to container');" +
             "                       sendDomUpdate();" +
             "                   }," +
-            "                   onMove: function (evt) {" + // Validate move
-            "                       console.log('Sortable onMove triggered');" +
+            "                   onUpdate: function(evt) {" +
+            "                       console.log('Sortable onUpdate - list reordered');" +
+            "                       sendDomUpdate();" +
+            "                   }," +
+            "                   onMove: function (evt, originalEvent) {" + // Validate move
+            "                       console.log('Sortable onMove - dragging over:', evt.related.tagName);" +
             "                       return true;" + // Allow all moves
+            "                   }," +
+            "                   onChoose: function(evt) {" +
+            "                       console.log('Sortable element chosen:', evt.item.id);" +
+            "                   }," +
+            "                   onUnchoose: function(evt) {" +
+            "                       console.log('Sortable element unchosen:', evt.item.id);" +
             "                   }" +
             "               });" +
             "               initialized++;" +
@@ -706,9 +738,32 @@ public class EditorActivity extends AppCompatActivity {
             
             // --- F. Initialization - Run immediately and on DOMContentLoaded ---
             "   (function() {" +
+            "       let isDragging = false;" +
+            "       let dragStartTime = 0;" +
+            "       " +
             "       function init() {" +
             "           initializeSortable();" +
+            "           " +
+            "           // Track dragging state to prevent click during drag" +
+            "           document.body.addEventListener('mousedown', (e) => {" +
+            "               isDragging = false;" +
+            "               dragStartTime = Date.now();" +
+            "           });" +
+            "           " +
+            "           document.body.addEventListener('mousemove', (e) => {" +
+            "               if (Date.now() - dragStartTime > 100) {" + // If moving for > 100ms, it's a drag
+            "                   isDragging = true;" +
+            "               }" +
+            "           });" +
+            "           " +
             "           document.body.addEventListener('click', (e) => {" +
+            "               // Don't select if we were dragging" +
+            "               if (isDragging) {" +
+            "                   console.log('Click ignored - was dragging');" +
+            "                   isDragging = false;" +
+            "                   return;" +
+            "               }" +
+            "               " +
             "               e.preventDefault();" +
             "               e.stopPropagation();" +
             "               let target = e.target;" +
@@ -717,6 +772,7 @@ public class EditorActivity extends AppCompatActivity {
             "                   if (target === document.body) { target = null; break; }" +
             "               }" +
             "               if (target && target.id) {" +
+            "                   console.log('Element selected:', target.id);" +
             "                   AndroidBridge.onElementSelected(target.id);" +
             "               } else {" +
             "                   AndroidBridge.onElementSelected(null);" + // Clicked on body
@@ -759,13 +815,44 @@ public class EditorActivity extends AppCompatActivity {
             "</script>";
 
         // 3. Combine and load
-        String fullHtml = "<html><head><style>" +
-                          "   body { min-height: 100vh; }" + // Ensure body is droppable
-                          "   [style*='outline'] { box-shadow: 0 0 5px #0D6EFD; }" + // Better highlight
-                          "   .sortable-ghost { opacity: 0.4; background: #C8E6C9; }" + // Ghost class during drag
-                          "   .sortable-drag { opacity: 0.8; }" + // Element being dragged
-                          "   [id^='bloc-'] { cursor: move; position: relative; }" + // All bloc elements are movable
+        String fullHtml = "<html><head>" +
+                          "<meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'>" +
+                          "<style>" +
+                          "   * { -webkit-tap-highlight-color: transparent; }" +
+                          "   body { " +
+                          "       min-height: 100vh; " +
+                          "       -webkit-user-select: none; " +
+                          "       -webkit-touch-callout: none; " +
+                          "       touch-action: none;" + // Important for drag to work
+                          "   }" +
+                          "   [id^='bloc-'] { " +
+                          "       cursor: move; " +
+                          "       position: relative; " +
+                          "       touch-action: none;" + // Allow Sortable to handle touch
+                          "       -webkit-user-select: none;" +
+                          "       user-select: none;" +
+                          "       min-height: 20px;" + // Ensure elements have minimum size
+                          "       min-width: 20px;" +
+                          "   }" +
                           "   [id^='bloc-']:hover { outline: 1px dashed #999; }" + // Show hint on hover
+                          "   [style*='outline'] { box-shadow: 0 0 5px #0D6EFD; }" + // Better highlight for selected
+                          "   .sortable-ghost { " +
+                          "       opacity: 0.4; " +
+                          "       background: #C8E6C9; " +
+                          "       border: 2px dashed #4CAF50;" +
+                          "   }" + // Ghost class during drag
+                          "   .sortable-drag { " +
+                          "       opacity: 0.8; " +
+                          "       transform: rotate(3deg);" + // Slight rotation during drag
+                          "   }" + // Element being dragged
+                          "   .sortable-chosen { " +
+                          "       background: #E3F2FD;" +
+                          "       border: 2px solid #2196F3;" +
+                          "   }" + // Element that was chosen for drag
+                          "   .sortable-fallback { " +
+                          "       opacity: 0.7; " +
+                          "       cursor: grabbing !important;" +
+                          "   }" + // Fallback element
                           currentProject.cssContent + 
                           "</style></head>" +
                           "<body>" + generatedHtml + "</body>" + jsInterfaceScript + "</html>";
