@@ -90,29 +90,74 @@ public class EditorActivity extends AppCompatActivity {
         });
 
         binding.canvasWebview.setOnDragListener((v, event) -> {
-            switch (event.getAction()) {
+            final int action = event.getAction();
+            String clipDataTag = "Unknown";
+
+            // Try to get clip description (for logging)
+            if (event.getClipDescription() != null && event.getClipDescription().getLabel() != null) {
+                clipDataTag = event.getClipDescription().getLabel().toString();
+            }
+
+            switch (action) {
                 case DragEvent.ACTION_DRAG_STARTED:
-                    return true;
+                    android.util.Log.d("BlocVibeDrag", "ACTION_DRAG_STARTED. Clip: " + clipDataTag);
+                    // CRITICAL: We must return true here if we accept the drop.
+                    // We accept if the clip is our "COMPONENT".
+                    if ("COMPONENT".equals(clipDataTag)) {
+                        android.util.Log.d("BlocVibeDrag", "-> Accepting drop.");
+                        return true; // Yes, we can accept this type of data
+                    } else {
+                        android.util.Log.d("BlocVibeDrag", "-> Rejecting drop (ClipData mismatch).");
+                        return false; // Rejecting
+                    }
+
                 case DragEvent.ACTION_DRAG_ENTERED:
+                    android.util.Log.d("BlocVibeDrag", "ACTION_DRAG_ENTERED");
+                    // Optional: Show a visual cue in WebView (e.g., change border)
+                    // binding.canvasWebview.evaluateJavascript("document.body.style.border='2px solid #0D6EFD';", null);
+                    return true; // Required to receive ACTION_DROP
+
+                case DragEvent.ACTION_DRAG_LOCATION:
+                    // Log.d("BlocVibeDrag", "ACTION_DRAG_LOCATION: X=" + event.getX() + ", Y=" + event.getY());
+                    return true; // Required
+
+                case DragEvent.ACTION_DRAG_EXITED:
+                    android.util.Log.d("BlocVibeDrag", "ACTION_DRAG_EXITED");
+                    // Optional: Remove visual cue
+                    // binding.canvasWebview.evaluateJavascript("document.body.style.border='none';", null);
                     return true;
+
                 case DragEvent.ACTION_DROP:
-                    // The ClipData contains the component's tag (e.g., "h2", "div")
+                    android.util.Log.d("BlocVibeDrag", "ACTION_DROP DETECTED!");
+
+                    // 1. Get the tag (e.g., "div", "h2")
                     String tag = event.getClipData().getItemAt(0).getText().toString();
 
+                    // 2. Get drop coordinates
                     float x = event.getX();
                     float y = event.getY();
 
-                    // Convert Android DP coordinates to WebView's CSS pixels
+                    // 3. Convert Android DP to WebView CSS pixels
                     float density = binding.canvasWebview.getResources().getDisplayMetrics().density;
                     float cssX = x / density;
                     float cssY = y / density;
 
-                    // Call the NEW JS function to handle the drop
+                    // 4. Call the JS function
                     String jsCall = String.format("javascript:handleAndroidDrop('%s', %f, %f);", tag, cssX, cssY);
+                    android.util.Log.d("BlocVibeDrag", "-> Calling JS: " + jsCall);
                     binding.canvasWebview.evaluateJavascript(jsCall, null);
+
+                    return true; // We handled the drop!
+
+                case DragEvent.ACTION_DRAG_ENDED:
+                    android.util.Log.d("BlocVibeDrag", "ACTION_DRAG_ENDED");
+                    // Optional: Remove visual cue
+                    // binding.canvasWebview.evaluateJavascript("document.body.style.border='none';", null);
                     return true;
+
                 default:
-                    return true;
+                    android.util.Log.d("BlocVibeDrag", "Unknown drag action: " + action);
+                    return false;
             }
         });
 
@@ -232,6 +277,7 @@ public class EditorActivity extends AppCompatActivity {
             "       });" +
             "   }" +
             "   function handleAndroidDrop(tag, x, y) {" +
+            "       console.log('JS: handleAndroidDrop received: ' + tag + ' at ' + x + ',' + y);" + // <-- ADD THIS LINE
             "       const newElement = document.createElement(tag);" +
             "       const newId = 'bloc-' + Math.random().toString(36).substr(2, 8);" +
             "       newElement.setAttribute('id', newId);" +
