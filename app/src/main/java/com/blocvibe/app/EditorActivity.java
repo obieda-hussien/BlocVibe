@@ -589,74 +589,141 @@ public class EditorActivity extends AppCompatActivity {
             // INJECT SORTABLE.JS LIBRARY
             "<script>" + SortableJsProvider.SORTABLE_JS_MINIFIED + "</script>" +
             
-            // INJECT OUR HELPER SCRIPT - Define functions globally first
+            // INJECT OUR HELPER SCRIPT - Custom Drag System (Sketchware-inspired)
             "<script>" +
             "   var currentSelectedId = null;" +
+            "   var draggedElement = null;" +
+            "   var touchStartY = 0;" +
+            "   var touchStartX = 0;" +
+            "   var isDragging = false;" +
+            "   var dragThreshold = 10;" + // Pixels to move before drag starts
             
-            // --- A. Initialize Sortable on all containers ---
-            "   window.initializeSortable = function() {" +
-            "       console.log('Initializing Sortable.js on containers');" +
-            "       const containers = document.querySelectorAll('body, div, .container');" +
-            "       let initialized = 0;" +
-            "       containers.forEach(container => {" +
-            "           // Skip if already has Sortable instance" +
-            "           if (container._sortable) {" +
-            "               console.log('Container already has Sortable:', container.tagName, container.id);" +
-            "               return;" +
+            // --- A. Simple custom drag system without Sortable.js ---
+            "   window.initializeDragSystem = function() {" +
+            "       console.log('Initializing custom drag system');" +
+            "       " +
+            "       // Get all bloc elements" +
+            "       const elements = document.querySelectorAll('[id^=\"bloc-\"]');" +
+            "       " +
+            "       elements.forEach(element => {" +
+            "           // Add drag handle visual indicator" +
+            "           if (!element.querySelector('.drag-handle')) {" +
+            "               const handle = document.createElement('div');" +
+            "               handle.className = 'drag-handle';" +
+            "               handle.innerHTML = '⋮⋮';" + // Three dots handle
+            "               handle.style.cssText = 'position:absolute;top:0;right:0;padding:5px;background:#2196F3;color:white;cursor:move;font-size:16px;z-index:1000;';" +
+            "               element.style.position = 'relative';" +
+            "               element.insertBefore(handle, element.firstChild);" +
             "           }" +
             "           " +
-            "           // Initialize Sortable on this container" +
-            "           try {" +
-            "               container._sortable = new Sortable(container, {" +
-            "                   group: 'shared'," + // Allows nesting and cross-container dragging!
-            "                   animation: 150," +
-            "                   easing: 'cubic-bezier(1, 0, 0, 1)'," +
-            "                   fallbackOnBody: true," +
-            "                   forceFallback: true," + // CRITICAL: Force HTML5 fallback for WebView compatibility
-            "                   swapThreshold: 0.65," +
-            "                   invertSwap: false," +
-            "                   direction: 'vertical'," +
-            "                   handle: false," + // Allow dragging from anywhere on the element
-            "                   draggable: '[id^=\"bloc-\"]'," + // Only elements with bloc- ID are draggable
-            "                   ghostClass: 'sortable-ghost'," +
-            "                   chosenClass: 'sortable-chosen'," +
-            "                   dragClass: 'sortable-drag'," +
-            "                   delay: 100," + // Small delay before drag starts (helps with WebView touch)
-            "                   delayOnTouchOnly: true," + // Only delay on touch devices
-            "                   touchStartThreshold: 5," + // Pixels of movement before canceling drag
-            "                   onStart: function(evt) {" +
-            "                       console.log('Sortable drag started:', evt.item.id);" +
-            "                   }," +
-            "                   onEnd: function (evt) {" + // Reordering existing element
-            "                       console.log('Sortable onEnd - from:', evt.oldIndex, 'to:', evt.newIndex);" +
-            "                       sendDomUpdate();" +
-            "                   }," +
-            "                   onAdd: function (evt) {" + // Element dropped from another list (nesting)
-            "                       console.log('Sortable onAdd - item added to container');" +
-            "                       sendDomUpdate();" +
-            "                   }," +
-            "                   onUpdate: function(evt) {" +
-            "                       console.log('Sortable onUpdate - list reordered');" +
-            "                       sendDomUpdate();" +
-            "                   }," +
-            "                   onMove: function (evt, originalEvent) {" + // Validate move
-            "                       console.log('Sortable onMove - dragging over:', evt.related.tagName);" +
-            "                       return true;" + // Allow all moves
-            "                   }," +
-            "                   onChoose: function(evt) {" +
-            "                       console.log('Sortable element chosen:', evt.item.id);" +
-            "                   }," +
-            "                   onUnchoose: function(evt) {" +
-            "                       console.log('Sortable element unchosen:', evt.item.id);" +
+            "           const handle = element.querySelector('.drag-handle');" +
+            "           " +
+            "           // Touch start" +
+            "           handle.addEventListener('touchstart', function(e) {" +
+            "               e.stopPropagation();" +
+            "               const touch = e.touches[0];" +
+            "               touchStartX = touch.clientX;" +
+            "               touchStartY = touch.clientY;" +
+            "               draggedElement = element;" +
+            "               element.style.opacity = '0.7';" +
+            "               console.log('Touch start on:', element.id);" +
+            "           }, {passive: true});" +
+            "           " +
+            "           // Touch move" +
+            "           handle.addEventListener('touchmove', function(e) {" +
+            "               if (!draggedElement) return;" +
+            "               e.preventDefault();" +
+            "               " +
+            "               const touch = e.touches[0];" +
+            "               const deltaX = touch.clientX - touchStartX;" +
+            "               const deltaY = touch.clientY - touchStartY;" +
+            "               " +
+            "               // Start dragging if moved beyond threshold" +
+            "               if (!isDragging && (Math.abs(deltaX) > dragThreshold || Math.abs(deltaY) > dragThreshold)) {" +
+            "                   isDragging = true;" +
+            "                   draggedElement.classList.add('dragging');" +
+            "                   console.log('Drag started');" +
+            "               }" +
+            "               " +
+            "               if (isDragging) {" +
+            "                   // Visual feedback - move element" +
+            "                   draggedElement.style.transform = 'translate(' + deltaX + 'px, ' + deltaY + 'px) rotate(2deg)';" +
+            "                   draggedElement.style.zIndex = '9999';" +
+            "                   " +
+            "                   // Find element under touch" +
+            "                   draggedElement.style.pointerEvents = 'none';" +
+            "                   const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);" +
+            "                   draggedElement.style.pointerEvents = 'auto';" +
+            "                   " +
+            "                   // Highlight drop target" +
+            "                   document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));" +
+            "                   if (elementBelow && elementBelow.id && elementBelow.id.startsWith('bloc-')) {" +
+            "                       elementBelow.classList.add('drop-target');" +
             "                   }" +
-            "               });" +
-            "               initialized++;" +
-            "               console.log('Sortable initialized on:', container.tagName, container.id || '(no id)');" +
-            "           } catch(e) {" +
-            "               console.error('Failed to initialize Sortable on container:', e);" +
-            "           }" +
+            "               }" +
+            "           }, {passive: false});" +
+            "           " +
+            "           // Touch end" +
+            "           handle.addEventListener('touchend', function(e) {" +
+            "               if (!draggedElement) return;" +
+            "               e.preventDefault();" +
+            "               " +
+            "               console.log('Touch end, isDragging:', isDragging);" +
+            "               " +
+            "               if (isDragging) {" +
+            "                   const touch = e.changedTouches[0];" +
+            "                   " +
+            "                   // Reset visual" +
+            "                   draggedElement.style.transform = '';" +
+            "                   draggedElement.style.zIndex = '';" +
+            "                   draggedElement.style.opacity = '1';" +
+            "                   draggedElement.classList.remove('dragging');" +
+            "                   " +
+            "                   // Find drop target" +
+            "                   draggedElement.style.pointerEvents = 'none';" +
+            "                   const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY);" +
+            "                   draggedElement.style.pointerEvents = 'auto';" +
+            "                   " +
+            "                   console.log('Drop target:', dropTarget ? dropTarget.tagName + ' ' + dropTarget.id : 'none');" +
+            "                   " +
+            "                   // Perform the drop" +
+            "                   if (dropTarget && dropTarget !== draggedElement) {" +
+            "                       if (dropTarget.id && dropTarget.id.startsWith('bloc-')) {" +
+            "                           // Drop on another bloc element" +
+            "                           if (dropTarget.tagName === 'DIV') {" +
+            "                               // Drop inside container" +
+            "                               dropTarget.appendChild(draggedElement);" +
+            "                               console.log('Dropped inside:', dropTarget.id);" +
+            "                           } else {" +
+            "                               // Drop after element" +
+            "                               dropTarget.parentNode.insertBefore(draggedElement, dropTarget.nextSibling);" +
+            "                               console.log('Dropped after:', dropTarget.id);" +
+            "                           }" +
+            "                           " +
+            "                           // Re-initialize drag system" +
+            "                           setTimeout(initializeDragSystem, 100);" +
+            "                           " +
+            "                           // Sync to Java" +
+            "                           sendDomUpdate();" +
+            "                       } else if (dropTarget === document.body || dropTarget.parentNode === document.body) {" +
+            "                           // Drop on body" +
+            "                           document.body.appendChild(draggedElement);" +
+            "                           console.log('Dropped on body');" +
+            "                           setTimeout(initializeDragSystem, 100);" +
+            "                           sendDomUpdate();" +
+            "                       }" +
+            "                   }" +
+            "                   " +
+            "                   // Clean up" +
+            "                   document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));" +
+            "               }" +
+            "               " +
+            "               draggedElement = null;" +
+            "               isDragging = false;" +
+            "           }, {passive: false});" +
             "       });" +
-            "       console.log('Sortable.js initialized on', initialized, 'containers');" +
+            "       " +
+            "       console.log('Drag system initialized on', elements.length, 'elements');" +
             "   };" +
             
             // --- B. Handle new element dropped from Android Palette ---
@@ -679,7 +746,7 @@ public class EditorActivity extends AppCompatActivity {
             "       } else {" +
             "           target.parentNode.insertBefore(newElement, target.nextSibling);" + // Drop after
             "       }" +
-            "       initializeSortable();" + // Make the new element (and its children) draggable
+            "       initializeDragSystem();" + // Make the new element draggable
             "       sendDomUpdate();" + // Sync with Java
             "   };" +
             
@@ -742,7 +809,7 @@ public class EditorActivity extends AppCompatActivity {
             "       let dragStartTime = 0;" +
             "       " +
             "       function init() {" +
-            "           initializeSortable();" +
+            "           initializeDragSystem();" +
             "           " +
             "           // Track dragging state to prevent click during drag" +
             "           document.body.addEventListener('mousedown', (e) => {" +
@@ -779,21 +846,21 @@ public class EditorActivity extends AppCompatActivity {
             "               }" +
             "           }, true);" + // Use capture phase
             "           " +
-            "           // Set up MutationObserver to auto-initialize Sortable on new containers" +
+            "           // Set up MutationObserver to auto-initialize drag system on new elements" +
             "           const observer = new MutationObserver(function(mutations) {" +
             "               let shouldReinitialize = false;" +
             "               mutations.forEach(function(mutation) {" +
             "                   if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {" +
             "                       mutation.addedNodes.forEach(function(node) {" +
-            "                           if (node.nodeType === 1 && node.tagName === 'DIV') {" + // Element node and is a div
+            "                           if (node.nodeType === 1 && node.id && node.id.startsWith('bloc-')) {" + // Bloc element added
             "                               shouldReinitialize = true;" +
             "                           }" +
             "                       });" +
             "                   }" +
             "               });" +
             "               if (shouldReinitialize) {" +
-            "                   console.log('DOM changed, reinitializing Sortable');" +
-            "                   setTimeout(initializeSortable, 50);" + // Small delay to let DOM settle
+            "                   console.log('DOM changed, reinitializing drag system');" +
+            "                   setTimeout(initializeDragSystem, 50);" + // Small delay to let DOM settle
             "               }" +
             "           });" +
             "           observer.observe(document.body, { childList: true, subtree: true });" +
@@ -823,36 +890,44 @@ public class EditorActivity extends AppCompatActivity {
                           "       min-height: 100vh; " +
                           "       -webkit-user-select: none; " +
                           "       -webkit-touch-callout: none; " +
-                          "       touch-action: none;" + // Important for drag to work
                           "   }" +
                           "   [id^='bloc-'] { " +
-                          "       cursor: move; " +
                           "       position: relative; " +
-                          "       touch-action: none;" + // Allow Sortable to handle touch
-                          "       -webkit-user-select: none;" +
-                          "       user-select: none;" +
-                          "       min-height: 20px;" + // Ensure elements have minimum size
-                          "       min-width: 20px;" +
+                          "       min-height: 30px; " +
+                          "       min-width: 30px; " +
+                          "       margin: 5px 0; " +
+                          "       transition: all 0.2s ease;" +
                           "   }" +
-                          "   [id^='bloc-']:hover { outline: 1px dashed #999; }" + // Show hint on hover
-                          "   [style*='outline'] { box-shadow: 0 0 5px #0D6EFD; }" + // Better highlight for selected
-                          "   .sortable-ghost { " +
-                          "       opacity: 0.4; " +
-                          "       background: #C8E6C9; " +
-                          "       border: 2px dashed #4CAF50;" +
-                          "   }" + // Ghost class during drag
-                          "   .sortable-drag { " +
-                          "       opacity: 0.8; " +
-                          "       transform: rotate(3deg);" + // Slight rotation during drag
-                          "   }" + // Element being dragged
-                          "   .sortable-chosen { " +
-                          "       background: #E3F2FD;" +
-                          "       border: 2px solid #2196F3;" +
-                          "   }" + // Element that was chosen for drag
-                          "   .sortable-fallback { " +
-                          "       opacity: 0.7; " +
-                          "       cursor: grabbing !important;" +
-                          "   }" + // Fallback element
+                          "   [id^='bloc-']:hover { " +
+                          "       outline: 1px dashed #999; " +
+                          "   }" +
+                          "   [style*='outline'] { box-shadow: 0 0 5px #0D6EFD; }" +
+                          "   .drag-handle { " +
+                          "       position: absolute !important; " +
+                          "       top: 0 !important; " +
+                          "       right: 0 !important; " +
+                          "       padding: 5px 8px !important; " +
+                          "       background: #2196F3 !important; " +
+                          "       color: white !important; " +
+                          "       cursor: move !important; " +
+                          "       font-size: 16px !important; " +
+                          "       z-index: 1000 !important; " +
+                          "       border-radius: 0 0 0 4px !important; " +
+                          "       user-select: none !important; " +
+                          "       -webkit-user-select: none !important; " +
+                          "   }" +
+                          "   .drag-handle:active { " +
+                          "       background: #1976D2 !important; " +
+                          "   }" +
+                          "   .dragging { " +
+                          "       opacity: 0.7 !important; " +
+                          "       z-index: 9999 !important; " +
+                          "       box-shadow: 0 5px 15px rgba(0,0,0,0.3) !important; " +
+                          "   }" +
+                          "   .drop-target { " +
+                          "       background: #E8F5E9 !important; " +
+                          "       border: 2px dashed #4CAF50 !important; " +
+                          "   }" +
                           currentProject.cssContent + 
                           "</style></head>" +
                           "<body>" + generatedHtml + "</body>" + jsInterfaceScript + "</html>";
