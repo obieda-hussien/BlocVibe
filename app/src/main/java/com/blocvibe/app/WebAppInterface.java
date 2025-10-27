@@ -67,30 +67,4 @@ public class WebAppInterface {
             });
         }
     }
-
-    /**
-     * Called from JavaScript after any drag/drop operation (add, move, reorder)
-     * This receives the entire updated DOM structure from the WebView
-     * @param elementsJson JSON representation of the updated element tree
-     */
-    @JavascriptInterface
-    public void onDomUpdated(String elementsJson) {
-        if (activity != null) {
-            activity.runOnUiThread(() -> {
-                activity.handleDomUpdate(elementsJson);
-            });
-        }
-    }
-    
-    /**
-     * Called from JavaScript to confirm it's ready and functions are available
-     */
-    @JavascriptInterface
-    public void confirmReady() {
-        if (activity != null) {
-            activity.runOnUiThread(() -> {
-                activity.onJavaScriptReady();
-            });
-        }
-    }
 }
