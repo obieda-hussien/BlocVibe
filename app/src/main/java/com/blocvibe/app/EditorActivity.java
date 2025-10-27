@@ -49,6 +49,7 @@ public class EditorActivity extends AppCompatActivity {
     
     // Track if WebView page is loaded
     private boolean isWebViewReady = false;
+    private boolean isJavaScriptReady = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -101,6 +102,8 @@ public class EditorActivity extends AppCompatActivity {
                 super.onPageFinished(view, url);
                 isWebViewReady = true;
                 android.util.Log.d("EditorActivity", "WebView page finished loading");
+                // Ping JavaScript to confirm it's ready
+                view.evaluateJavascript("javascript:if(typeof AndroidBridge !== 'undefined' && typeof window.handleAndroidDrop === 'function') { AndroidBridge.confirmReady(); }", null);
             }
         });
 
@@ -153,35 +156,60 @@ public class EditorActivity extends AppCompatActivity {
                                 // Log the drop for debugging
                                 android.util.Log.d("EditorActivity", "Dropping element: " + tag + " at (" + cssX + ", " + cssY + ")");
                                 
-                                // Call JavaScript function to handle the drop intelligently
+                                // Use a robust approach: try JavaScript first, then fallback to Java
                                 final String finalTag = tag;
                                 
+                                // Attempt 1: Try JavaScript with aggressive retry
                                 Runnable dropAction = new Runnable() {
                                     int retries = 0;
+                                    final int MAX_RETRIES = 20; // Increased from 10
+                                    final int RETRY_DELAY_MS = 50; // Reduced from 100ms for faster response
                                     
                                     @Override
                                     public void run() {
-                                        if (!isWebViewReady && retries < 10) {
-                                            // Wait for page to be ready, retry after 100ms
+                                        // Check if we should retry
+                                        if (!isJavaScriptReady && retries < MAX_RETRIES) {
                                             retries++;
-                                            android.util.Log.d("EditorActivity", "WebView not ready, retry " + retries);
-                                            binding.canvasWebview.postDelayed(this, 100);
+                                            android.util.Log.d("EditorActivity", "JS not ready, retry " + retries + "/" + MAX_RETRIES);
+                                            binding.canvasWebview.postDelayed(this, RETRY_DELAY_MS);
                                             return;
                                         }
                                         
-                                        String jsCall = String.format(
-                                            "if(typeof window.handleAndroidDrop === 'function') { " +
-                                            "  window.handleAndroidDrop('%s', %f, %f); " +
-                                            "} else { " +
-                                            "  console.error('handleAndroidDrop not available'); " +
-                                            "}", 
-                                            finalTag, cssX, cssY);
-                                        binding.canvasWebview.evaluateJavascript(jsCall, result -> {
-                                            android.util.Log.d("EditorActivity", "JS execution result: " + result);
-                                        });
+                                        // If JavaScript is ready, use it for intelligent placement
+                                        if (isJavaScriptReady) {
+                                            String jsCall = String.format(
+                                                "(function() {" +
+                                                "  try {" +
+                                                "    if(typeof window.handleAndroidDrop === 'function') {" +
+                                                "      window.handleAndroidDrop('%s', %f, %f);" +
+                                                "      return 'SUCCESS';" +
+                                                "    } else {" +
+                                                "      return 'FUNCTION_NOT_FOUND';" +
+                                                "    }" +
+                                                "  } catch(e) {" +
+                                                "    console.error('Drop error:', e);" +
+                                                "    return 'ERROR: ' + e.message;" +
+                                                "  }" +
+                                                "})();", 
+                                                finalTag, cssX, cssY);
+                                            
+                                            binding.canvasWebview.evaluateJavascript(jsCall, result -> {
+                                                android.util.Log.d("EditorActivity", "JS drop result: " + result);
+                                                // If JavaScript failed, use fallback
+                                                if (result == null || !result.contains("SUCCESS")) {
+                                                    android.util.Log.w("EditorActivity", "JS drop failed, using fallback");
+                                                    fallbackAddElement(finalTag);
+                                                }
+                                            });
+                                        } else {
+                                            // JavaScript not ready after retries, use fallback
+                                            android.util.Log.w("EditorActivity", "JS not ready after " + MAX_RETRIES + " retries, using fallback");
+                                            fallbackAddElement(finalTag);
+                                        }
                                     }
                                 };
                                 
+                                // Start the drop action
                                 binding.canvasWebview.post(dropAction);
                             }
                         }
@@ -540,8 +568,9 @@ public class EditorActivity extends AppCompatActivity {
         if (elementTree == null) elementTree = new ArrayList<>();
         if (currentProject == null) return;
         
-        // Reset ready flag
+        // Reset ready flags
         isWebViewReady = false;
+        isJavaScriptReady = false;
 
         // 1. Build HTML from the elementTree
         String generatedHtml = buildHtmlRecursive(elementTree);
@@ -673,6 +702,14 @@ public class EditorActivity extends AppCompatActivity {
             "                   AndroidBridge.onElementSelected(null);" + // Clicked on body
             "               }" +
             "           }, true);" + // Use capture phase
+            "           " +
+            "           // Confirm to Java that JavaScript is ready" +
+            "           setTimeout(function() {" +
+            "               if (typeof AndroidBridge !== 'undefined' && typeof AndroidBridge.confirmReady === 'function') {" +
+            "                   AndroidBridge.confirmReady();" +
+            "                   console.log('JavaScript confirmed ready to Android');" +
+            "               }" +
+            "           }, 100);" + // Small delay to ensure everything is initialized
             "       }" +
             "       if (document.readyState === 'loading') {" +
             "           document.addEventListener('DOMContentLoaded', init);" +
@@ -992,6 +1029,66 @@ public class EditorActivity extends AppCompatActivity {
     public void onWebViewPageReady() {
         // Called when WebView page is fully loaded
         Toast.makeText(this, "Page loaded", Toast.LENGTH_SHORT).show();
+    }
+    
+    /**
+     * Called from JavaScript bridge when JS functions are confirmed ready
+     */
+    public void onJavaScriptReady() {
+        isJavaScriptReady = true;
+        android.util.Log.d("EditorActivity", "JavaScript confirmed ready");
+    }
+    
+    /**
+     * Fallback method to add element directly to Java model when JavaScript fails
+     */
+    private void fallbackAddElement(String tag) {
+        android.util.Log.d("EditorActivity", "Using fallback to add element: " + tag);
+        runOnUiThread(() -> {
+            // Create new element
+            BlocElement newElement = new BlocElement(tag);
+            
+            // Set default content based on tag
+            switch (tag) {
+                case "button":
+                    newElement.textContent = "Click Me";
+                    break;
+                case "p":
+                    newElement.textContent = "Lorem ipsum dolor sit amet.";
+                    break;
+                case "h2":
+                    newElement.textContent = "Heading";
+                    break;
+                case "a":
+                    newElement.textContent = "Link";
+                    newElement.attributes.put("href", "#");
+                    break;
+                case "img":
+                    newElement.attributes.put("src", "https://via.placeholder.com/150");
+                    newElement.attributes.put("alt", "placeholder");
+                    break;
+                case "div":
+                    newElement.textContent = "Container";
+                    newElement.styles.put("padding", "10px");
+                    newElement.styles.put("border", "1px solid #ccc");
+                    newElement.styles.put("min-height", "50px");
+                    break;
+            }
+            
+            // Add to element tree
+            if (elementTree == null) {
+                elementTree = new ArrayList<>();
+            }
+            elementTree.add(newElement);
+            
+            // Save and re-render
+            saveProject();
+            renderCanvas();
+            
+            // Show confirmation
+            Toast.makeText(this, "Element added: " + tag, Toast.LENGTH_SHORT).show();
+            android.util.Log.d("EditorActivity", "Element added via fallback, re-rendering canvas");
+        });
     }
 
     @Override

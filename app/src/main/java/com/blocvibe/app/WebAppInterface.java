@@ -81,4 +81,16 @@ public class WebAppInterface {
             });
         }
     }
+    
+    /**
+     * Called from JavaScript to confirm it's ready and functions are available
+     */
+    @JavascriptInterface
+    public void confirmReady() {
+        if (activity != null) {
+            activity.runOnUiThread(() -> {
+                activity.onJavaScriptReady();
+            });
+        }
+    }
 }
