@@ -583,28 +583,48 @@ public class EditorActivity extends AppCompatActivity {
             // INJECT OUR HELPER SCRIPT - Define functions globally first
             "<script>" +
             "   var currentSelectedId = null;" +
-            "   var sortableInitialized = false;" +
             
             // --- A. Initialize Sortable on all containers ---
             "   window.initializeSortable = function() {" +
-            "       if (sortableInitialized) return;" +
-            "       sortableInitialized = true;" +
+            "       console.log('Initializing Sortable.js on containers');" +
             "       const containers = document.querySelectorAll('body, div, .container');" +
+            "       let initialized = 0;" +
             "       containers.forEach(container => {" +
-            "           if (container._sortable) return;" + // Don't re-initialize
-            "           container._sortable = new Sortable(container, {" +
-            "               group: 'shared'," + // Allows nesting!
-            "               animation: 150," +
-            "               fallbackOnBody: true," +
-            "               swapThreshold: 0.65," +
-            "               onEnd: function (evt) {" + // Reordering existing element
-            "                   sendDomUpdate();" +
-            "               }," +
-            "               onAdd: function (evt) {" + // Element dropped from another list (nesting)
-            "                   sendDomUpdate();" +
-            "               }" +
-            "           });" +
+            "           // Skip if already has Sortable instance" +
+            "           if (container._sortable) {" +
+            "               console.log('Container already has Sortable:', container.tagName, container.id);" +
+            "               return;" +
+            "           }" +
+            "           " +
+            "           // Initialize Sortable on this container" +
+            "           try {" +
+            "               container._sortable = new Sortable(container, {" +
+            "                   group: 'shared'," + // Allows nesting and cross-container dragging!
+            "                   animation: 150," +
+            "                   fallbackOnBody: true," +
+            "                   swapThreshold: 0.65," +
+            "                   handle: false," + // Allow dragging from anywhere on the element
+            "                   draggable: '[id^=\"bloc-\"]'," + // Only elements with bloc- ID are draggable
+            "                   onEnd: function (evt) {" + // Reordering existing element
+            "                       console.log('Sortable onEnd triggered');" +
+            "                       sendDomUpdate();" +
+            "                   }," +
+            "                   onAdd: function (evt) {" + // Element dropped from another list (nesting)
+            "                       console.log('Sortable onAdd triggered');" +
+            "                       sendDomUpdate();" +
+            "                   }," +
+            "                   onMove: function (evt) {" + // Validate move
+            "                       console.log('Sortable onMove triggered');" +
+            "                       return true;" + // Allow all moves
+            "                   }" +
+            "               });" +
+            "               initialized++;" +
+            "               console.log('Sortable initialized on:', container.tagName, container.id || '(no id)');" +
+            "           } catch(e) {" +
+            "               console.error('Failed to initialize Sortable on container:', e);" +
+            "           }" +
             "       });" +
+            "       console.log('Sortable.js initialized on', initialized, 'containers');" +
             "   };" +
             
             // --- B. Handle new element dropped from Android Palette ---
@@ -703,6 +723,25 @@ public class EditorActivity extends AppCompatActivity {
             "               }" +
             "           }, true);" + // Use capture phase
             "           " +
+            "           // Set up MutationObserver to auto-initialize Sortable on new containers" +
+            "           const observer = new MutationObserver(function(mutations) {" +
+            "               let shouldReinitialize = false;" +
+            "               mutations.forEach(function(mutation) {" +
+            "                   if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {" +
+            "                       mutation.addedNodes.forEach(function(node) {" +
+            "                           if (node.nodeType === 1 && node.tagName === 'DIV') {" + // Element node and is a div
+            "                               shouldReinitialize = true;" +
+            "                           }" +
+            "                       });" +
+            "                   }" +
+            "               });" +
+            "               if (shouldReinitialize) {" +
+            "                   console.log('DOM changed, reinitializing Sortable');" +
+            "                   setTimeout(initializeSortable, 50);" + // Small delay to let DOM settle
+            "               }" +
+            "           });" +
+            "           observer.observe(document.body, { childList: true, subtree: true });" +
+            "           " +
             "           // Confirm to Java that JavaScript is ready" +
             "           setTimeout(function() {" +
             "               if (typeof AndroidBridge !== 'undefined' && typeof AndroidBridge.confirmReady === 'function') {" +
@@ -723,7 +762,10 @@ public class EditorActivity extends AppCompatActivity {
         String fullHtml = "<html><head><style>" +
                           "   body { min-height: 100vh; }" + // Ensure body is droppable
                           "   [style*='outline'] { box-shadow: 0 0 5px #0D6EFD; }" + // Better highlight
-                          "   .sortable-ghost { opacity: 0.4; background: #C8E6C9; }" + // Ghost class
+                          "   .sortable-ghost { opacity: 0.4; background: #C8E6C9; }" + // Ghost class during drag
+                          "   .sortable-drag { opacity: 0.8; }" + // Element being dragged
+                          "   [id^='bloc-'] { cursor: move; position: relative; }" + // All bloc elements are movable
+                          "   [id^='bloc-']:hover { outline: 1px dashed #999; }" + // Show hint on hover
                           currentProject.cssContent + 
                           "</style></head>" +
                           "<body>" + generatedHtml + "</body>" + jsInterfaceScript + "</html>";
