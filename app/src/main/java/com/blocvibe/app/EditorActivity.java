@@ -78,14 +78,28 @@ public class EditorActivity extends AppCompatActivity {
         // Initialize WebView with JavaScript Bridge
         binding.canvasWebview.getSettings().setJavaScriptEnabled(true);
         binding.canvasWebview.getSettings().setDomStorageEnabled(true);
+        binding.canvasWebview.setVerticalScrollBarEnabled(true);
+        binding.canvasWebview.setHorizontalScrollBarEnabled(true);
+        
+        // CRITICAL: Allow JavaScript to handle touch events
+        binding.canvasWebview.requestDisallowInterceptTouchEvent(false);
+        binding.canvasWebview.getSettings().setSupportZoom(false);
+        binding.canvasWebview.getSettings().setBuiltInZoomControls(false);
         binding.canvasWebview.getSettings().setAllowFileAccess(true);
         binding.canvasWebview.getSettings().setAllowContentAccess(true);
         
-        // Enable touch and gesture support for Sortable.js
-        binding.canvasWebview.getSettings().setSupportZoom(false);
-        binding.canvasWebview.getSettings().setBuiltInZoomControls(false);
-        binding.canvasWebview.setVerticalScrollBarEnabled(true);
-        binding.canvasWebview.setHorizontalScrollBarEnabled(true);
+        // Override touch event handling to allow JavaScript drag system
+        binding.canvasWebview.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, android.view.MotionEvent event) {
+                // Let WebView handle touch events normally, but log for debugging
+                android.util.Log.d("EditorActivity", "Touch event: " + event.getAction() + " at (" + event.getX() + ", " + event.getY() + ")");
+                
+                // Return false to let WebView process the touch event
+                // This allows JavaScript to receive touch events
+                return false;
+            }
+        });
         
         binding.canvasWebview.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
         
@@ -620,19 +634,25 @@ public class EditorActivity extends AppCompatActivity {
             "           " +
             "           // Touch start" +
             "           handle.addEventListener('touchstart', function(e) {" +
+            "               e.preventDefault(); // CRITICAL: prevent default touch behavior" +
             "               e.stopPropagation();" +
             "               const touch = e.touches[0];" +
             "               touchStartX = touch.clientX;" +
             "               touchStartY = touch.clientY;" +
             "               draggedElement = element;" +
             "               element.style.opacity = '0.7';" +
-            "               console.log('Touch start on:', element.id);" +
-            "           }, {passive: true});" +
+            "               handle.style.background = '#1976D2'; // Visual feedback on touch" +
+            "               console.log('Touch start on:', element.id, 'at', touchStartX, touchStartY);" +
+            "           }, {passive: false});" + // MUST be false to allow preventDefault!
             "           " +
             "           // Touch move" +
             "           handle.addEventListener('touchmove', function(e) {" +
-            "               if (!draggedElement) return;" +
+            "               if (!draggedElement) {" +
+            "                   console.log('Touch move but no dragged element');" +
+            "                   return;" +
+            "               }" +
             "               e.preventDefault();" +
+            "               e.stopPropagation();" +
             "               " +
             "               const touch = e.touches[0];" +
             "               const deltaX = touch.clientX - touchStartX;" +
@@ -642,13 +662,14 @@ public class EditorActivity extends AppCompatActivity {
             "               if (!isDragging && (Math.abs(deltaX) > dragThreshold || Math.abs(deltaY) > dragThreshold)) {" +
             "                   isDragging = true;" +
             "                   draggedElement.classList.add('dragging');" +
-            "                   console.log('Drag started');" +
+            "                   console.log('Drag started - delta:', deltaX, deltaY);" +
             "               }" +
             "               " +
             "               if (isDragging) {" +
             "                   // Visual feedback - move element" +
             "                   draggedElement.style.transform = 'translate(' + deltaX + 'px, ' + deltaY + 'px) rotate(2deg)';" +
             "                   draggedElement.style.zIndex = '9999';" +
+            "                   console.log('Dragging element, delta:', deltaX, deltaY);" +
             "                   " +
             "                   // Find element under touch" +
             "                   draggedElement.style.pointerEvents = 'none';" +
@@ -659,19 +680,26 @@ public class EditorActivity extends AppCompatActivity {
             "                   document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));" +
             "                   if (elementBelow && elementBelow.id && elementBelow.id.startsWith('bloc-')) {" +
             "                       elementBelow.classList.add('drop-target');" +
+            "                       console.log('Drop target:', elementBelow.id);" +
             "                   }" +
             "               }" +
             "           }, {passive: false});" +
             "           " +
             "           // Touch end" +
             "           handle.addEventListener('touchend', function(e) {" +
-            "               if (!draggedElement) return;" +
+            "               if (!draggedElement) {" +
+            "                   console.log('Touch end but no dragged element');" +
+            "                   return;" +
+            "               }" +
             "               e.preventDefault();" +
+            "               e.stopPropagation();" +
             "               " +
+            "               handle.style.background = '#2196F3'; // Reset handle color" +
             "               console.log('Touch end, isDragging:', isDragging);" +
             "               " +
             "               if (isDragging) {" +
             "                   const touch = e.changedTouches[0];" +
+            "                   console.log('Touch ended at:', touch.clientX, touch.clientY);" +
             "                   " +
             "                   // Reset visual" +
             "                   draggedElement.style.transform = '';" +
@@ -684,7 +712,7 @@ public class EditorActivity extends AppCompatActivity {
             "                   const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY);" +
             "                   draggedElement.style.pointerEvents = 'auto';" +
             "                   " +
-            "                   console.log('Drop target:', dropTarget ? dropTarget.tagName + ' ' + dropTarget.id : 'none');" +
+            "                   console.log('Drop target:', dropTarget ? dropTarget.tagName + ' #' + dropTarget.id : 'none');" +
             "                   " +
             "                   // Perform the drop" +
             "                   if (dropTarget && dropTarget !== draggedElement) {" +
@@ -693,11 +721,11 @@ public class EditorActivity extends AppCompatActivity {
             "                           if (dropTarget.tagName === 'DIV') {" +
             "                               // Drop inside container" +
             "                               dropTarget.appendChild(draggedElement);" +
-            "                               console.log('Dropped inside:', dropTarget.id);" +
+            "                               console.log('✓ Dropped inside:', dropTarget.id);" +
             "                           } else {" +
             "                               // Drop after element" +
             "                               dropTarget.parentNode.insertBefore(draggedElement, dropTarget.nextSibling);" +
-            "                               console.log('Dropped after:', dropTarget.id);" +
+            "                               console.log('✓ Dropped after:', dropTarget.id);" +
             "                           }" +
             "                           " +
             "                           // Re-initialize drag system" +
@@ -906,15 +934,22 @@ public class EditorActivity extends AppCompatActivity {
                           "       position: absolute !important; " +
                           "       top: 0 !important; " +
                           "       right: 0 !important; " +
-                          "       padding: 5px 8px !important; " +
+                          "       padding: 10px 15px !important; " + // Larger touch target
                           "       background: #2196F3 !important; " +
                           "       color: white !important; " +
                           "       cursor: move !important; " +
-                          "       font-size: 16px !important; " +
+                          "       font-size: 20px !important; " + // Larger text
+                          "       font-weight: bold !important; " +
                           "       z-index: 1000 !important; " +
-                          "       border-radius: 0 0 0 4px !important; " +
+                          "       border-radius: 0 0 0 8px !important; " +
                           "       user-select: none !important; " +
                           "       -webkit-user-select: none !important; " +
+                          "       touch-action: none !important; " + // CRITICAL for touch drag
+                          "       min-width: 50px !important; " + // Minimum touch size
+                          "       min-height: 40px !important; " +
+                          "       display: flex !important; " +
+                          "       align-items: center !important; " +
+                          "       justify-content: center !important; " +
                           "   }" +
                           "   .drag-handle:active { " +
                           "       background: #1976D2 !important; " +
