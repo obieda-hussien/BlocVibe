@@ -32,7 +32,7 @@ public class PaletteAdapter extends RecyclerView.Adapter<PaletteAdapter.PaletteV
 
         holder.itemView.setOnLongClickListener(view -> {
             // 1. Create the ClipData
-            ClipData.Item clipItem = new ClipData.Item(item.htmlTag); // e.g., "div"
+            ClipData.Item clipItem = new ClipData.Item(item.getHtmlTag()); // e.g., "div"
             String[] mimeTypes = { "text/plain" };
 
             // CRITICAL FIX: Add the "COMPONENT" label here
