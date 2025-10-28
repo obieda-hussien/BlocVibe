@@ -271,6 +271,7 @@ public class EditorActivity extends AppCompatActivity {
             "               animation: 150," +
             "               fallbackOnBody: true," +
             "               swapThreshold: 0.65," +
+            "               forceFallback: true," +
             "               onEnd: function (evt) { sendDomUpdate(); }," +
             "               onAdd: function (evt) { sendDomUpdate(); }" +
             "           });" +
