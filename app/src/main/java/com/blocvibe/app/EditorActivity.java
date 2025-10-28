@@ -195,7 +195,59 @@ public class EditorActivity extends AppCompatActivity {
         TextInputEditText editColor = propertiesView.findViewById(R.id.edit_color);
         MaterialButton backBtn = propertiesView.findViewById(R.id.back_to_palette_btn);
 
-        // Add TextWatchers for live property editing (omitted for brevity, assume they call a save/update function)
+        editId.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String newId = s.toString();
+                    // Note: Changing the ID in JS is complex as it's the main selector.
+                    // For now, we update the model. A full re-render would be needed to reflect in JS.
+                    currentSelectedElement.attributes.put("id", newId);
+                    // To prevent breaking selectors, we might need to tell JS to update its internal ID
+                    // and then re-highlight. For now, we'll just save.
+                }
+            }
+        });
+
+        editClass.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String className = s.toString();
+                    currentSelectedElement.attributes.put("class", className);
+                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').className = '" + className + "';";
+                    binding.canvasWebview.evaluateJavascript(js, null);
+                }
+            }
+        });
+
+        editWidth.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String width = s.toString();
+                    currentSelectedElement.styles.put("width", width);
+                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.width = '" + width + "';";
+                    binding.canvasWebview.evaluateJavascript(js, null);
+                }
+            }
+        });
+
+        editColor.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                if (currentSelectedElement != null) {
+                    String color = s.toString();
+                    currentSelectedElement.styles.put("color", color);
+                    String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.color = '" + color + "';";
+                    binding.canvasWebview.evaluateJavascript(js, null);
+                }
+            }
+        });
 
         backBtn.setOnClickListener(v -> {
             handleElementSelection(null); // Deselect
@@ -259,24 +311,8 @@ public class EditorActivity extends AppCompatActivity {
         String generatedHtml = buildHtmlRecursive(elementTree);
 
         String jsInterfaceScript =
-            "<script>" + SortableJsProvider.SORTABLE_JS_MINIFIED + "</script>" +
             "<script>" +
             "   let currentSelectedId = null;" +
-            "   function initializeSortable() {" +
-            "       const containers = document.querySelectorAll('body, div, .container');" +
-            "       containers.forEach(container => {" +
-            "           if (container._sortable) return;" +
-            "           container._sortable = new Sortable(container, {" +
-            "               group: 'shared'," +
-            "               animation: 150," +
-            "               fallbackOnBody: true," +
-            "               swapThreshold: 0.65," +
-            "               forceFallback: true," +
-            "               onEnd: function (evt) { sendDomUpdate(); }," +
-            "               onAdd: function (evt) { sendDomUpdate(); }" +
-            "           });" +
-            "       });" +
-            "   }" +
             "   function handleAndroidDrop(tag, x, y) {" +
             "       console.log('JS: handleAndroidDrop received: ' + tag + ' at ' + x + ',' + y);" + // <-- ADD THIS LINE
             "       const newElement = document.createElement(tag);" +
@@ -294,7 +330,6 @@ public class EditorActivity extends AppCompatActivity {
             "       } else {" +
             "           document.body.appendChild(newElement);" +
             "       }" +
-            "       initializeSortable();" +
             "       sendDomUpdate();" +
             "   }" +
             "   function highlightElement(elementId) {" +
@@ -343,7 +378,7 @@ public class EditorActivity extends AppCompatActivity {
             "       AndroidBridge.onDomUpdated(JSON.stringify(model));" +
             "   }" +
             "   document.addEventListener('DOMContentLoaded', function() {" +
-            "       initializeSortable();" +
+            "       initCustomDragDrop();" +
             "       document.body.addEventListener('click', (e) => {" +
             "           let target = e.target.closest('[id^=\"bloc-\"]');" +
             "           if (target && target.id) {" +
@@ -353,13 +388,114 @@ public class EditorActivity extends AppCompatActivity {
             "           }" +
             "       }, true);" +
             "   });" +
+            "   let draggedElement = null;" +
+            "   let ghostElement = null;" +
+            "   let dropIndicator = null;" +
+            "   let longPressTimer = null;" +
+            "   let startX, startY;" +
+            "   function initCustomDragDrop() {" +
+            "       const body = document.body;" +
+            "       body.addEventListener('touchstart', handleTouchStart, { passive: false });" +
+            "       body.addEventListener('touchmove', handleTouchMove, { passive: false });" +
+            "       body.addEventListener('touchend', handleTouchEnd, { passive: false });" +
+            "       dropIndicator = document.createElement('div');" +
+            "       dropIndicator.className = 'drop-indicator';" +
+            "       document.body.appendChild(dropIndicator);" +
+            "   }" +
+            "   function handleTouchStart(e) {" +
+            "       const target = e.target.closest('[id^=\"bloc-\"]');" +
+            "       if (!target) return;" +
+            "       e.preventDefault();" +
+            "       const touch = e.touches[0];" +
+            "       startX = touch.clientX;" +
+            "       startY = touch.clientY;" +
+            "       longPressTimer = setTimeout(() => {" +
+            "           draggedElement = target;" +
+            "           createGhostElement(draggedElement, touch);" +
+            "       }, 500);" +
+            "   }" +
+            "   function handleTouchMove(e) {" +
+            "       if (!draggedElement) {" +
+            "           clearTimeout(longPressTimer);" +
+            "           return;" +
+            "       }" +
+            "       e.preventDefault();" +
+            "       const touch = e.touches[0];" +
+            "       if (ghostElement) {" +
+            "           ghostElement.style.top = (touch.clientY - 30) + 'px';" +
+            "           ghostElement.style.left = (touch.clientX - (ghostElement.offsetWidth / 2)) + 'px';" +
+            "       }" +
+            "       updateDropIndicator(touch.clientX, touch.clientY);" +
+            "   }" +
+            "   function handleTouchEnd(e) {" +
+            "       clearTimeout(longPressTimer);" +
+            "       if (!draggedElement) return;" +
+            "       if (dropIndicator.style.display === 'block') {" +
+            "           const targetElement = dropIndicator.nextSibling;" +
+            "           if (targetElement) {" +
+            "               dropIndicator.parentNode.insertBefore(draggedElement, targetElement);" +
+            "           } else {" +
+            "               dropIndicator.parentNode.appendChild(draggedElement);" +
+            "           }" +
+            "           sendDomUpdate();" +
+            "       }" +
+            "       cleanupDragDrop();" +
+            "   }" +
+            "   function createGhostElement(original, touch) {" +
+            "       ghostElement = original.cloneNode(true);" +
+            "       ghostElement.classList.add('ghost-element');" +
+            "       document.body.appendChild(ghostElement);" +
+            "       ghostElement.style.top = (touch.clientY - 30) + 'px';" +
+            "       ghostElement.style.left = (touch.clientX - (ghostElement.offsetWidth / 2)) + 'px';" +
+            "       original.style.opacity = '0.4';" +
+            "   }" +
+            "   function updateDropIndicator(x, y) {" +
+            "       const dropTarget = getDropTarget(x, y);" +
+            "       if (dropTarget) {" +
+            "           const rect = dropTarget.element.getBoundingClientRect();" +
+            "           if (dropTarget.position === 'before') {" +
+            "               dropIndicator.style.top = rect.top + 'px';" +
+            "           } else {" +
+            "               dropIndicator.style.top = rect.bottom + 'px';" +
+            "           }" +
+            "           dropIndicator.style.left = rect.left + 'px';" +
+            "           dropIndicator.style.width = rect.width + 'px';" +
+            "           dropIndicator.style.display = 'block';" +
+            "       } else {" +
+            "           dropIndicator.style.display = 'none';" +
+            "       }" +
+            "   }" +
+            "   function getDropTarget(x, y) {" +
+            "       ghostElement.style.display = 'none';" +
+            "       const elementUnder = document.elementFromPoint(x, y);" +
+            "       ghostElement.style.display = '';" +
+            "       const closestBloc = elementUnder ? elementUnder.closest('[id^=\"bloc-\"]') : null;" +
+            "       if (closestBloc && closestBloc !== draggedElement) {" +
+            "           const rect = closestBloc.getBoundingClientRect();" +
+            "           const isAfter = y > rect.top + rect.height / 2;" +
+            "           return { element: closestBloc, position: isAfter ? 'after' : 'before' };" +
+            "       }" +
+            "       return null;" +
+            "   }" +
+            "   function cleanupDragDrop() {" +
+            "       if (draggedElement) {" +
+            "           draggedElement.style.opacity = '1';" +
+            "       }" +
+            "       if (ghostElement && ghostElement.parentNode) {" +
+            "           ghostElement.parentNode.removeChild(ghostElement);" +
+            "       }" +
+            "       dropIndicator.style.display = 'none';" +
+            "       draggedElement = null;" +
+            "       ghostElement = null;" +
+            "   }" +
             "</script>";
 
         String fullHtml = "<html><head><style>" +
                           "body { min-height: 100vh; font-family: sans-serif; }" +
                           "[id^='bloc-'] { padding: 4px; }" +
                           "img { max-width: 100%; height: auto; }" +
-                          ".sortable-ghost { opacity: 0.4; background: #C8E6C9; }" +
+                          ".ghost-element { opacity: 0.7; position: absolute; pointer-events: none; z-index: 1000; }" +
+                          ".drop-indicator { position: absolute; height: 2px; background-color: #0D6EFD; z-index: 1001; display: none; }" +
                           (currentProject.cssContent != null ? currentProject.cssContent : "") +
                           "</style></head>" +
                           "<body>" + generatedHtml + "</body>" + jsInterfaceScript + "</html>";
