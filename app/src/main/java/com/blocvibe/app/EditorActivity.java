@@ -111,11 +111,11 @@ public class EditorActivity extends AppCompatActivity {
     }
 
     private void injectEditorScripts() {
-        String sortableJs = loadAssetAsString("sortable.min.js");
+        String sortableJs = loadStringFromAssets("sortable.min.js");
         if (sortableJs != null) {
             binding.canvasWebview.evaluateJavascript(sortableJs, null);
         }
-        String editorCoreJs = loadAssetAsString("editor-core.js");
+        String editorCoreJs = loadStringFromAssets("editor-core.js");
         if (editorCoreJs != null) {
             binding.canvasWebview.evaluateJavascript(editorCoreJs, null);
         }
