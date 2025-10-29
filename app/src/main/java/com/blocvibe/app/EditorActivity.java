@@ -111,9 +111,13 @@ public class EditorActivity extends AppCompatActivity {
     }
 
     private void injectEditorScripts() {
-        String jsContent = loadStringFromAssets("editor-helper.js");
-        if (jsContent != null) {
-            binding.canvasWebview.evaluateJavascript(jsContent, null);
+        String sortableJs = loadAssetAsString("sortable.min.js");
+        if (sortableJs != null) {
+            binding.canvasWebview.evaluateJavascript(sortableJs, null);
+        }
+        String editorCoreJs = loadAssetAsString("editor-core.js");
+        if (editorCoreJs != null) {
+            binding.canvasWebview.evaluateJavascript(editorCoreJs, null);
         }
     }
 
@@ -394,5 +398,17 @@ public class EditorActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         executorService.shutdown();
+    }
+
+    public ActivityEditorBinding getBinding() {
+        return binding;
+    }
+
+    public void handleElementTextChange(String elementId, String newText) {
+        // TODO: Implement logic to update text of an element
+    }
+
+    public void onWebViewPageReady() {
+        // TODO: Implement logic to run when the web page is ready
     }
 }
