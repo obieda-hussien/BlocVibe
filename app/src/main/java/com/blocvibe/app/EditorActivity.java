@@ -399,6 +399,16 @@ public class EditorActivity extends AppCompatActivity {
         return html.toString();
     }
 
+    /**
+     * Generate HTML from elementTree for CodeEditorActivity
+     */
+    private String generateHtmlFromElements() {
+        if (elementTree == null || elementTree.isEmpty()) {
+            return "<body>\n  <p>No elements yet. Start dragging components!</p>\n</body>";
+        }
+        return buildHtmlRecursive(elementTree);
+    }
+
     private void saveProject() {
         if (currentProject == null) return;
 
@@ -505,17 +515,16 @@ public class EditorActivity extends AppCompatActivity {
                 return found;
             }
         }
-        return null; // Not found
+        return null;
     }
 
     public void handleElementTextChange(String elementId, String newText) {
-        for (BlocElement element : elementTree) {
-            BlocElement found = element.findById(elementId);
-            if (found != null) {
-                found.textContent = newText;
-                saveProject();
-                break;
-            }
+        if (elementTree == null) return;
+        
+        BlocElement found = findElementById(elementTree, elementId);
+        if (found != null) {
+            found.textContent = newText;
+            saveProject();
         }
     }
 
