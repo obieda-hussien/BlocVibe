@@ -29,27 +29,6 @@ public class PaletteAdapter extends RecyclerView.Adapter<PaletteAdapter.PaletteV
     public void onBindViewHolder(@NonNull PaletteViewHolder holder, int position) {
         ComponentItem item = items.get(position);
         holder.bind(item);
-
-        holder.itemView.setOnLongClickListener(view -> {
-            // 1. Create the ClipData
-            ClipData.Item clipItem = new ClipData.Item(item.getHtmlTag()); // e.g., "div"
-            String[] mimeTypes = { "text/plain" };
-
-            // CRITICAL FIX: Add the "COMPONENT" label here
-            ClipData dragData = new ClipData(
-                "COMPONENT", // This is the Label. Our OnDragListener checks for this.
-                mimeTypes,
-                clipItem
-            );
-
-            // 2. Create the shadow
-            View.DragShadowBuilder shadowBuilder = new View.DragShadowBuilder(view);
-
-            // 3. Start the drag
-            view.startDragAndDrop(dragData, shadowBuilder, view, 0);
-
-            return true;
-        });
     }
 
     @Override
@@ -67,6 +46,15 @@ public class PaletteAdapter extends RecyclerView.Adapter<PaletteAdapter.PaletteV
 
         public void bind(ComponentItem item) {
             binding.paletteItemText.setText(item.getName());
+            
+            // Set up long click listener for drag-and-drop
+            binding.getRoot().setOnLongClickListener(v -> {
+                ClipData.Item clipItem = new ClipData.Item(item.getHtmlTag());
+                ClipData dragData = new ClipData("COMPONENT", new String[]{"text/plain"}, clipItem);
+                View.DragShadowBuilder shadowBuilder = new View.DragShadowBuilder(v);
+                v.startDragAndDrop(dragData, shadowBuilder, v, 0);
+                return true;
+            });
         }
     }
 }

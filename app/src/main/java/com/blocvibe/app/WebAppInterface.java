@@ -3,7 +3,6 @@ package com.blocvibe.app;
 import android.content.Context;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
-import android.util.Log;
 
 /**
  * WebAppInterface - JavaScript Bridge for WebView communication
@@ -11,7 +10,6 @@ import android.util.Log;
  * to communicate back to the Java/Android application.
  */
 public class WebAppInterface {
-    private static final String TAG = "WebAppInterface";
     private EditorActivity activity;
 
     public WebAppInterface(EditorActivity activity) {
@@ -46,27 +44,12 @@ public class WebAppInterface {
     }
 
     /**
-     * Called from JavaScript when the DOM is updated (for sync)
-     * @param elementsJson JSON string representing the updated element tree
-     */
-    @JavascriptInterface
-    public void onDomUpdated(String elementsJson) {
-        if (activity != null) {
-            activity.runOnUiThread(() -> {
-                boolean success = activity.handleDomUpdate(elementsJson);
-                Log.d(TAG, "DOM sync " + (success ? "succeeded" : "failed"));
-            });
-        }
-    }
-
-    /**
      * Called from JavaScript to log messages to Android console
      * @param message The message to log
      */
     @JavascriptInterface
     public void log(String message) {
         if (activity != null) {
-            Log.d(TAG, "JS: " + message);
             activity.runOnUiThread(() -> {
                 Toast.makeText(activity, "JS: " + message, Toast.LENGTH_SHORT).show();
             });
@@ -81,6 +64,86 @@ public class WebAppInterface {
         if (activity != null) {
             activity.runOnUiThread(() -> {
                 activity.onWebViewPageReady();
+            });
+        }
+    }
+
+    /**
+     * Called from JavaScript when an element is moved (drag & drop)
+     * @param elementId The ID of the moved element
+     * @param newParentId The ID of the new parent (or "root")
+     * @param index The new position index
+     */
+    @JavascriptInterface
+    public void onElementMoved(String elementId, String newParentId, int index) {
+        if (activity != null) {
+            activity.runOnUiThread(() -> {
+                activity.handleElementMove(elementId, newParentId, index);
+            });
+        }
+    }
+
+    /**
+     * Called from JavaScript when an element should be moved up
+     * @param elementId The ID of the element to move
+     */
+    @JavascriptInterface
+    public void onElementMoveUp(String elementId) {
+        if (activity != null) {
+            activity.runOnUiThread(() -> {
+                activity.handleElementMoveUp(elementId);
+            });
+        }
+    }
+
+    /**
+     * Called from JavaScript when an element should be moved down
+     * @param elementId The ID of the element to move
+     */
+    @JavascriptInterface
+    public void onElementMoveDown(String elementId) {
+        if (activity != null) {
+            activity.runOnUiThread(() -> {
+                activity.handleElementMoveDown(elementId);
+            });
+        }
+    }
+
+    /**
+     * Called from JavaScript when an element should be deleted
+     * @param elementId The ID of the element to delete
+     */
+    @JavascriptInterface
+    public void onElementDelete(String elementId) {
+        if (activity != null) {
+            activity.runOnUiThread(() -> {
+                activity.handleElementDelete(elementId);
+            });
+        }
+    }
+
+    /**
+     * Called from JavaScript when an element should be duplicated
+     * @param elementId The ID of the element to duplicate
+     */
+    @JavascriptInterface
+    public void onElementDuplicate(String elementId) {
+        if (activity != null) {
+            activity.runOnUiThread(() -> {
+                activity.handleElementDuplicate(elementId);
+            });
+        }
+    }
+
+    /**
+     * Called from JavaScript when multiple elements should be wrapped in a div
+     * @param elementIdsJson JSON array of element IDs to wrap
+     */
+    @JavascriptInterface
+    public void onElementsWrapInDiv(String elementIdsJson) {
+        if (activity != null) {
+            activity.runOnUiThread(() -> {
+                activity.handleElementsWrapInDiv(elementIdsJson);
             });
         }
     }

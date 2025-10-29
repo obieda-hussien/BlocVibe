@@ -2,26 +2,21 @@ package com.blocvibe.app;
 
 import android.content.ClipData;
 import android.content.Intent;
-import android.content.res.AssetManager;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.util.Log;
 import android.view.DragEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.activity.result.ActivityResult;
 import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.blocvibe.app.databinding.ActivityEditorBinding;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.button.MaterialButton;
@@ -29,9 +24,6 @@ import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-
-import java.io.IOException;
-import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,19 +33,18 @@ import java.util.concurrent.Executors;
 
 public class EditorActivity extends AppCompatActivity {
 
-    private static final String TAG = "EditorActivity";
-
     private ActivityEditorBinding binding;
     private BottomSheetBehavior<com.google.android.material.card.MaterialCardView> bottomSheetBehavior;
     private Project currentProject;
     private AppDatabase db;
     private long currentProjectId;
-
+    
     // Phase 3: New structured data model fields
     private List<BlocElement> elementTree;  // Main data model
     private BlocElement currentSelectedElement;
     private Gson gson = new Gson();
-
+    private ElementManager elementManager;  // Advanced element management
+    
     private ExecutorService executorService;
     private ActivityResultLauncher<Intent> codeEditorResultLauncher;
 
@@ -81,14 +72,16 @@ public class EditorActivity extends AppCompatActivity {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
 
-        // Initialize WebView + JS Bridge + inject assets after load
-        setupWebViewBridge();
+        // Initialize WebView with JavaScript Bridge
+        binding.canvasWebview.getSettings().setJavaScriptEnabled(true);
+        binding.canvasWebview.getSettings().setDomStorageEnabled(true);
+        binding.canvasWebview.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
 
         // Load project data
         db.projectDao().getProjectById(currentProjectId).observe(this, project -> {
             if (project != null) {
                 this.currentProject = project;
-
+                
                 // Deserialize element tree from JSON
                 if (project.elementsJson != null && !project.elementsJson.isEmpty()) {
                     Type listType = new TypeToken<List<BlocElement>>(){}.getType();
@@ -96,7 +89,10 @@ public class EditorActivity extends AppCompatActivity {
                 } else {
                     elementTree = new ArrayList<>();
                 }
-
+                
+                // Initialize ElementManager
+                elementManager = new ElementManager(elementTree);
+                
                 if (getSupportActionBar() != null) {
                     getSupportActionBar().setTitle(project.name);
                 }
@@ -104,27 +100,49 @@ public class EditorActivity extends AppCompatActivity {
             }
         });
 
-        // Forward drag-and-drop to JS instead of creating elements in Android
+        // Set up drag listener on WebView
         binding.canvasWebview.setOnDragListener(new View.OnDragListener() {
             @Override
             public boolean onDrag(View v, DragEvent event) {
                 switch (event.getAction()) {
                     case DragEvent.ACTION_DRAG_STARTED:
                         return true;
+                    case DragEvent.ACTION_DRAG_ENTERED:
+                        return true;
                     case DragEvent.ACTION_DROP:
                         ClipData clipData = event.getClipData();
                         if (clipData != null && clipData.getItemCount() > 0) {
                             String droppedHtml = clipData.getItemAt(0).getText().toString();
+                            
+                            // Extract tag from dropped component HTML
                             String tag = extractTagFromHtml(droppedHtml);
                             if (tag != null) {
-                                float x = event.getX();
-                                float y = event.getY();
-                                float density = binding.canvasWebview.getResources().getDisplayMetrics().density;
-                                float cssX = x / density;
-                                float cssY = y / density;
-
-                                String js = String.format("javascript:window.handleAndroidDrop('%s', %f, %f);", tag, cssX, cssY);
-                                binding.canvasWebview.evaluateJavascript(js, null);
+                                BlocElement newElement = new BlocElement(tag);
+                                
+                                // Set default text content based on tag
+                                if (tag.equals("button")) {
+                                    newElement.textContent = "Click Me";
+                                } else if (tag.equals("p")) {
+                                    newElement.textContent = "Lorem ipsum dolor sit amet.";
+                                } else if (tag.equals("h2")) {
+                                    newElement.textContent = "Heading";
+                                } else if (tag.equals("a")) {
+                                    newElement.textContent = "Link";
+                                    newElement.attributes.put("href", "#");
+                                } else if (tag.equals("div")) {
+                                    newElement.textContent = "Container";
+                                    newElement.styles.put("padding", "10px");
+                                    newElement.styles.put("border", "1px solid #ccc");
+                                }
+                                
+                                // Check for nesting: add to selected element or root
+                                if (currentSelectedElement != null) {
+                                    currentSelectedElement.children.add(newElement);
+                                } else {
+                                    elementTree.add(newElement);
+                                }
+                                
+                                renderCanvas();
                             }
                         }
                         return true;
@@ -146,7 +164,7 @@ public class EditorActivity extends AppCompatActivity {
         paletteItems.add(new ComponentItem("Image", R.drawable.ic_code, "<img src='https://via.placeholder.com/150' alt='placeholder' />"));
         paletteItems.add(new ComponentItem("Link", R.drawable.ic_code, "<a href='#'>Link</a>"));
         paletteItems.add(new ComponentItem("Div", R.drawable.ic_code, "<div style='padding: 10px; border: 1px solid #ccc;'>Container</div>"));
-
+        
         PaletteAdapter paletteAdapter = new PaletteAdapter(paletteItems);
         binding.bottomSheetPalette.paletteRecyclerView.setAdapter(paletteAdapter);
 
@@ -154,12 +172,13 @@ public class EditorActivity extends AppCompatActivity {
         binding.fabTogglePalette.setOnClickListener(v -> {
             if (bottomSheetBehavior.getState() == BottomSheetBehavior.STATE_HIDDEN) {
                 bottomSheetBehavior.setState(BottomSheetBehavior.STATE_EXPANDED);
-                Toast.makeText(this, "Long press any component and drag to canvas",
+                Toast.makeText(this, "Long press any component and drag to canvas", 
                     Toast.LENGTH_SHORT).show();
             } else {
                 bottomSheetBehavior.setState(BottomSheetBehavior.STATE_HIDDEN);
             }
         });
+
 
         // Set up property editors for the second view in ViewFlipper
         View propertiesView = binding.bottomSheetPalette.editorFlipper.getChildAt(1);
@@ -171,28 +190,38 @@ public class EditorActivity extends AppCompatActivity {
 
         // Add TextWatchers for live property editing
         editId.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            
             @Override
             public void afterTextChanged(Editable s) {
                 if (currentSelectedElement != null) {
                     String newId = s.toString();
                     currentSelectedElement.attributes.put("id", newId);
+                    // Update element ID in the WebView
                     String js = "var el = document.getElementById('" + currentSelectedElement.elementId + "');" +
-                                "if(el) { el.setAttribute('id', '" + newId + "'); }";
+                               "if(el) { el.setAttribute('id', '" + newId + "'); }";
                     binding.canvasWebview.evaluateJavascript(js, null);
                 }
             }
         });
 
         editClass.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            
             @Override
             public void afterTextChanged(Editable s) {
                 if (currentSelectedElement != null) {
                     String className = s.toString();
                     currentSelectedElement.attributes.put("class", className);
+                    // Live-update the WebView
                     String js = "document.getElementById('" + currentSelectedElement.elementId + "').className = '" + className + "';";
                     binding.canvasWebview.evaluateJavascript(js, null);
                 }
@@ -200,13 +229,18 @@ public class EditorActivity extends AppCompatActivity {
         });
 
         editWidth.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            
             @Override
             public void afterTextChanged(Editable s) {
                 if (currentSelectedElement != null) {
                     String width = s.toString();
                     currentSelectedElement.styles.put("width", width);
+                    // Live-update the WebView
                     String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.width = '" + width + "';";
                     binding.canvasWebview.evaluateJavascript(js, null);
                 }
@@ -214,13 +248,18 @@ public class EditorActivity extends AppCompatActivity {
         });
 
         editColor.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            
             @Override
             public void afterTextChanged(Editable s) {
                 if (currentSelectedElement != null) {
                     String color = s.toString();
                     currentSelectedElement.styles.put("color", color);
+                    // Live-update the WebView
                     String js = "document.getElementById('" + currentSelectedElement.elementId + "').style.color = '" + color + "';";
                     binding.canvasWebview.evaluateJavascript(js, null);
                 }
@@ -233,6 +272,46 @@ public class EditorActivity extends AppCompatActivity {
             renderCanvas(); // Re-render to remove highlight
         });
 
+        // Set up element management buttons
+        MaterialButton btnMoveUp = propertiesView.findViewById(R.id.btn_move_up);
+        MaterialButton btnMoveDown = propertiesView.findViewById(R.id.btn_move_down);
+        MaterialButton btnDuplicate = propertiesView.findViewById(R.id.btn_duplicate);
+        MaterialButton btnDelete = propertiesView.findViewById(R.id.btn_delete);
+        MaterialButton btnWrapInDiv = propertiesView.findViewById(R.id.btn_wrap_in_div);
+
+        btnMoveUp.setOnClickListener(v -> {
+            if (currentSelectedElement != null) {
+                handleElementMoveUp(currentSelectedElement.elementId);
+            }
+        });
+
+        btnMoveDown.setOnClickListener(v -> {
+            if (currentSelectedElement != null) {
+                handleElementMoveDown(currentSelectedElement.elementId);
+            }
+        });
+
+        btnDuplicate.setOnClickListener(v -> {
+            if (currentSelectedElement != null) {
+                handleElementDuplicate(currentSelectedElement.elementId);
+            }
+        });
+
+        btnDelete.setOnClickListener(v -> {
+            if (currentSelectedElement != null) {
+                handleElementDelete(currentSelectedElement.elementId);
+            }
+        });
+
+        btnWrapInDiv.setOnClickListener(v -> {
+            if (currentSelectedElement != null) {
+                List<String> ids = new ArrayList<>();
+                ids.add(currentSelectedElement.elementId);
+                String json = gson.toJson(ids);
+                handleElementsWrapInDiv(json);
+            }
+        });
+
         // Register for activity result from CodeEditorActivity
         codeEditorResultLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -242,14 +321,18 @@ public class EditorActivity extends AppCompatActivity {
                     if (result.getResultCode() == RESULT_OK && result.getData() != null) {
                         Intent data = result.getData();
                         if (currentProject != null) {
+                            // Update global CSS and JS
                             currentProject.cssContent = data.getStringExtra("CSS_RESULT");
                             currentProject.jsContent = data.getStringExtra("JS_RESULT");
-
+                            
+                            // Note: HTML editing is now handled through element tree
+                            // For backwards compatibility, we parse the HTML if provided
                             String htmlResult = data.getStringExtra("HTML_RESULT");
                             if (htmlResult != null && !htmlResult.isEmpty()) {
-                                // Optional: parse back to elementTree if needed
+                                // Could parse and update element tree here
+                                // For now, just refresh
                             }
-
+                            
                             renderCanvas();
                             saveProject();
                         }
@@ -257,50 +340,6 @@ public class EditorActivity extends AppCompatActivity {
                 }
             }
         );
-    }
-
-    private void setupWebViewBridge() {
-        binding.canvasWebview.getSettings().setJavaScriptEnabled(true);
-        binding.canvasWebview.getSettings().setDomStorageEnabled(true);
-        binding.canvasWebview.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
-        binding.canvasWebview.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                injectEditorScripts();
-            }
-        });
-    }
-
-    private void injectEditorScripts() {
-        // Load and execute Sortable + EditorCore from assets
-        String sortableJs = loadStringFromAssets("sortable.min.js");
-        if (sortableJs != null) {
-            binding.canvasWebview.evaluateJavascript(sortableJs, null);
-        } else {
-            Log.w(TAG, "sortable.min.js not found in assets");
-        }
-
-        String editorCoreJs = loadStringFromAssets("editor-core.js");
-        if (editorCoreJs != null) {
-            binding.canvasWebview.evaluateJavascript(editorCoreJs, null);
-        } else {
-            Log.w(TAG, "editor-core.js not found in assets");
-        }
-    }
-
-    private String loadStringFromAssets(String fileName) {
-        try {
-            AssetManager assetManager = getAssets();
-            InputStream inputStream = assetManager.open(fileName);
-            byte[] buffer = new byte[inputStream.available()];
-            int read = inputStream.read(buffer);
-            inputStream.close();
-            return read > 0 ? new String(buffer) : "";
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to load " + fileName + " from assets", e);
-            return null;
-        }
     }
 
     @Override
@@ -312,7 +351,7 @@ public class EditorActivity extends AppCompatActivity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
-
+        
         if (id == android.R.id.home) {
             finish();
             return true;
@@ -326,6 +365,7 @@ public class EditorActivity extends AppCompatActivity {
         } else if (id == R.id.action_view_code) {
             if (currentProject != null) {
                 Intent intent = new Intent(this, CodeEditorActivity.class);
+                // Generate HTML from element tree
                 String generatedHtml = generateHtmlFromElements();
                 intent.putExtra("HTML", generatedHtml);
                 intent.putExtra("CSS", currentProject.cssContent);
@@ -334,7 +374,7 @@ public class EditorActivity extends AppCompatActivity {
             }
             return true;
         }
-
+        
         return super.onOptionsItemSelected(item);
     }
 
@@ -342,23 +382,50 @@ public class EditorActivity extends AppCompatActivity {
         if (elementTree == null) elementTree = new ArrayList<>();
         if (currentProject == null) return;
 
-        // Build HTML from the elementTree
+        // 1. Build HTML from the elementTree
         String generatedHtml = buildHtmlRecursive(elementTree);
 
-        // Wrap with canvas-root so EditorCore targets it
-        String fullHtml =
-            "<html><head>" +
-            "<meta name='viewport' content='width=device-width, initial-scale=1.0'/>" +
-            "<style>" +
-            (currentProject.cssContent != null ? currentProject.cssContent : "") +
-            "body{min-height:100vh;font-family:sans-serif;}" +
-            "</style></head>" +
-            "<body>" +
-            "<div id='canvas-root'>" + generatedHtml + "</div>" +
-            "</body></html>";
+        // 2. Load canvas interaction script from assets
+        String canvasScript = "";
+        try {
+            java.io.InputStream is = getAssets().open("canvas-interaction.js");
+            byte[] buffer = new byte[is.available()];
+            is.read(buffer);
+            is.close();
+            canvasScript = new String(buffer, "UTF-8");
+        } catch (Exception e) {
+            android.util.Log.e("BlocVibe", "Error loading canvas script", e);
+        }
 
-        // Use assets base URL so relative asset loads (if added later) work
-        binding.canvasWebview.loadDataWithBaseURL("file:///android_asset/", fullHtml, "text/html", "UTF-8", null);
+        // 3. Build the enhanced JS injection script
+        String jsInjectorScript = 
+            " <script>" + canvasScript + "</script>" +
+            " <script>" +
+            "   // Highlight selected element" +
+            (currentSelectedElement != null ? 
+            "   setTimeout(function() {" +
+            "     var selected = document.getElementById('" + currentSelectedElement.elementId + "');" +
+            "     if(selected) {" +
+            "       selected.style.outline = '2px solid #0D6EFD';" +
+            "       selected.style.backgroundColor = 'rgba(13, 110, 253, 0.1)';" +
+            "       selected.scrollIntoView({ behavior: 'smooth', block: 'center' });" +
+            "     }" +
+            "   }, 100);" : "") +
+            " </script>";
+
+        // 4. Combine and load
+        String fullHtml = "<!DOCTYPE html><html><head>" +
+                          "<meta name='viewport' content='width=device-width, initial-scale=1.0'>" +
+                          "<style>" + currentProject.cssContent + 
+                          " body { padding: 10px; } " +
+                          " .bloc-dragging { opacity: 0.5; } " +
+                          " .bloc-selected { outline: 2px solid #0D6EFD !important; } " +
+                          "</style></head>" +
+                          "<body>" + generatedHtml + "</body>" + 
+                          jsInjectorScript + 
+                          "</html>";
+
+        binding.canvasWebview.loadDataWithBaseURL(null, fullHtml, "text/html", "UTF-8", null);
     }
 
     private String buildHtmlRecursive(List<BlocElement> elements) {
@@ -381,14 +448,14 @@ public class EditorActivity extends AppCompatActivity {
                 html.append(" style=\"").append(styleString.toString()).append("\"");
             }
 
-            html.append(">");
+            html.append(">"); // Close start tag
 
-            // Text content
+            // Add text content
             if (el.textContent != null && !el.textContent.isEmpty()) {
                 html.append(el.textContent);
             }
 
-            // Children
+            // Recursively add children
             if (!el.children.isEmpty()) {
                 html.append(buildHtmlRecursive(el.children));
             }
@@ -399,22 +466,13 @@ public class EditorActivity extends AppCompatActivity {
         return html.toString();
     }
 
-    /**
-     * Generate HTML from elementTree for CodeEditorActivity
-     */
-    private String generateHtmlFromElements() {
-        if (elementTree == null || elementTree.isEmpty()) {
-            return "<body>\n  <p>No elements yet. Start dragging components!</p>\n</body>";
-        }
-        return buildHtmlRecursive(elementTree);
-    }
-
     private void saveProject() {
         if (currentProject == null) return;
-
+        
+        // Serialize element tree to JSON
         currentProject.elementsJson = gson.toJson(elementTree);
         currentProject.lastModified = System.currentTimeMillis();
-
+        
         executorService.execute(() -> {
             db.projectDao().updateProject(currentProject);
             runOnUiThread(() -> {
@@ -422,56 +480,38 @@ public class EditorActivity extends AppCompatActivity {
             });
         });
     }
-
+    
     /**
      * Helper method to extract tag from HTML string
      */
     private String extractTagFromHtml(String html) {
-        if (html == null) return null;
-        html = html.trim();
+        // Extract tag name from HTML (e.g., "<h2>..." -> "h2")
         if (html.startsWith("<")) {
             int endIndex = html.indexOf('>');
             if (endIndex > 0) {
                 String tagPart = html.substring(1, endIndex);
+                // Remove attributes if any
                 int spaceIndex = tagPart.indexOf(' ');
                 if (spaceIndex > 0) {
                     return tagPart.substring(0, spaceIndex);
                 }
-                return tagPart.replace("/", "").trim();
+                return tagPart;
             }
         }
         return null;
     }
-
+    
     /**
-     * JS bridge callback to handle DOM sync from editor-core.js
-     * Should be called by WebAppInterface.onDomUpdated(json)
+     * Generate HTML from element tree for code editor
      */
-    public boolean handleDomUpdate(String elementsJson) {
-        try {
-            if (elementsJson == null || elementsJson.trim().isEmpty()) {
-                Log.e(TAG, "Empty JSON received");
-                binding.canvasWebview.evaluateJavascript("window.EditorCore.onSyncFailure()", null);
-                return false;
-            }
-            Type type = new TypeToken<ArrayList<BlocElement>>(){}.getType();
-            ArrayList<BlocElement> newTree = gson.fromJson(elementsJson, type);
-            if (newTree == null) {
-                Log.e(TAG, "Failed to parse JSON.");
-                binding.canvasWebview.evaluateJavascript("window.EditorCore.onSyncFailure()", null);
-                return false;
-            }
-            this.elementTree = newTree;
-            saveProject();
-            binding.canvasWebview.evaluateJavascript("window.EditorCore.onSyncSuccess()", null);
-            return true;
-        } catch (Exception e) {
-            Log.e(TAG, "Sync failed: " + e.getMessage(), e);
-            binding.canvasWebview.evaluateJavascript("window.EditorCore.onSyncFailure()", null);
-            return false;
+    private String generateHtmlFromElements() {
+        StringBuilder html = new StringBuilder();
+        for (BlocElement element : elementTree) {
+            html.append(element.toHtml()).append("\n");
         }
+        return html.toString();
     }
-
+    
     /**
      * JavaScript bridge callback methods
      */
@@ -482,11 +522,14 @@ public class EditorActivity extends AppCompatActivity {
             return;
         }
 
+        // Find the element in our tree (needs a recursive helper function)
         currentSelectedElement = findElementById(elementTree, elementId);
 
         if (currentSelectedElement != null) {
-            binding.bottomSheetPalette.editorFlipper.setDisplayedChild(1);
+            // 1. Switch to properties panel
+            binding.bottomSheetPalette.editorFlipper.setDisplayedChild(1); 
 
+            // 2. Populate the fields (using the inflated view)
             View propertiesView = binding.bottomSheetPalette.editorFlipper.getChildAt(1);
             TextView label = propertiesView.findViewById(R.id.selected_element_label);
             TextInputEditText editId = propertiesView.findViewById(R.id.edit_id);
@@ -500,12 +543,12 @@ public class EditorActivity extends AppCompatActivity {
             editWidth.setText(currentSelectedElement.styles.get("width"));
             editColor.setText(currentSelectedElement.styles.get("color"));
 
-            renderCanvas(); // Re-render to show highlight if needed
+            // 3. Re-render canvas to show highlight
+            renderCanvas(); 
         }
     }
 
     private BlocElement findElementById(List<BlocElement> elements, String id) {
-        if (elements == null) return null;
         for (BlocElement el : elements) {
             if (el.elementId.equals(id)) {
                 return el;
@@ -515,21 +558,117 @@ public class EditorActivity extends AppCompatActivity {
                 return found;
             }
         }
-        return null;
+        return null; // Not found
+    }
+    
+    public void handleElementTextChange(String elementId, String newText) {
+        for (BlocElement element : elementTree) {
+            BlocElement found = element.findById(elementId);
+            if (found != null) {
+                found.textContent = newText;
+                saveProject();
+                break;
+            }
+        }
+    }
+    
+    public void onWebViewPageReady() {
+        // Called when WebView page is fully loaded
+        Toast.makeText(this, "Canvas ready", Toast.LENGTH_SHORT).show();
     }
 
-    public void handleElementTextChange(String elementId, String newText) {
-        if (elementTree == null) return;
-        
-        BlocElement found = findElementById(elementTree, elementId);
-        if (found != null) {
-            found.textContent = newText;
-            saveProject();
+    /**
+     * Advanced element management handlers
+     */
+    public void handleElementMove(String elementId, String newParentId, int index) {
+        if (elementManager != null) {
+            boolean success = elementManager.moveElementToParent(elementId, newParentId, index);
+            if (success) {
+                saveProject();
+                renderCanvas();
+                Snackbar.make(binding.getRoot(), "Element moved", Snackbar.LENGTH_SHORT).show();
+            }
         }
     }
 
-    public void onWebViewPageReady() {
-        Toast.makeText(this, "Page loaded", Toast.LENGTH_SHORT).show();
+    public void handleElementMoveUp(String elementId) {
+        if (elementManager != null) {
+            boolean success = elementManager.moveElementUp(elementId);
+            if (success) {
+                saveProject();
+                renderCanvas();
+                Snackbar.make(binding.getRoot(), "Element moved up", Snackbar.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Cannot move up - already at top", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    public void handleElementMoveDown(String elementId) {
+        if (elementManager != null) {
+            boolean success = elementManager.moveElementDown(elementId);
+            if (success) {
+                saveProject();
+                renderCanvas();
+                Snackbar.make(binding.getRoot(), "Element moved down", Snackbar.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Cannot move down - already at bottom", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    public void handleElementDelete(String elementId) {
+        if (elementManager != null) {
+            boolean success = elementManager.deleteElement(elementId);
+            if (success) {
+                currentSelectedElement = null;
+                binding.bottomSheetPalette.editorFlipper.setDisplayedChild(0); // Back to palette
+                saveProject();
+                renderCanvas();
+                Snackbar.make(binding.getRoot(), "Element deleted", Snackbar.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Failed to delete element", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    public void handleElementDuplicate(String elementId) {
+        if (elementManager != null) {
+            BlocElement duplicate = elementManager.duplicateElement(elementId);
+            if (duplicate != null) {
+                saveProject();
+                renderCanvas();
+                Snackbar.make(binding.getRoot(), "Element duplicated", Snackbar.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Failed to duplicate element", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    public void handleElementsWrapInDiv(String elementIdsJson) {
+        if (elementManager != null) {
+            try {
+                Type listType = new TypeToken<List<String>>(){}.getType();
+                List<String> elementIds = gson.fromJson(elementIdsJson, listType);
+                
+                BlocElement wrapper = elementManager.wrapElementsInDiv(elementIds);
+                if (wrapper != null) {
+                    saveProject();
+                    renderCanvas();
+                    Snackbar.make(binding.getRoot(), "Elements wrapped in container", 
+                        Snackbar.LENGTH_SHORT).show();
+                    
+                    // Select the wrapper
+                    currentSelectedElement = wrapper;
+                    handleElementSelection(wrapper.elementId);
+                } else {
+                    Toast.makeText(this, "Failed to wrap elements", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                android.util.Log.e("BlocVibe", "Error wrapping elements", e);
+                Toast.makeText(this, "Error wrapping elements", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 
     @Override
