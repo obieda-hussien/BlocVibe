@@ -180,46 +180,114 @@ public class ElementManager {
     
     /**
      * Move element to different parent (drag & drop within canvas)
+     * Enhanced with better validation and edge case handling
      */
     public boolean moveElementToParent(String elementId, String newParentId, int index) {
+        android.util.Log.d("ElementManager", "📍 moveElementToParent: " + elementId + " -> " + newParentId + " @ " + index);
+        
         BlocElement element = findElementInTree(elementTree, elementId);
-        if (element == null) return false;
+        if (element == null) {
+            android.util.Log.e("ElementManager", "❌ Element not found: " + elementId);
+            return false;
+        }
+        
+        // منع نقل عنصر إلى نفسه أو إلى أحد أطفاله
+        if (elementId.equals(newParentId)) {
+            android.util.Log.e("ElementManager", "❌ Cannot move element to itself");
+            return false;
+        }
+        
+        if (isDescendant(elementId, newParentId)) {
+            android.util.Log.e("ElementManager", "❌ Cannot move element to its own descendant");
+            return false;
+        }
         
         // Remove from current parent
+        String oldParentId = element.parentId;
         if (element.parentId == null) {
             elementTree.remove(element);
+            android.util.Log.d("ElementManager", "📤 Removed from root");
         } else {
             BlocElement oldParent = findElementInTree(elementTree, element.parentId);
             if (oldParent != null) {
                 oldParent.children.remove(element);
+                android.util.Log.d("ElementManager", "📤 Removed from parent: " + oldParent.elementId);
             }
         }
         
         // Add to new parent
-        if (newParentId == null || newParentId.equals("root")) {
+        // Handle both "root" and "body" as root level
+        if (newParentId == null || newParentId.equals("root") || newParentId.equals("body")) {
             // Move to root
             element.parentId = null;
             if (index >= 0 && index < elementTree.size()) {
                 elementTree.add(index, element);
+                android.util.Log.d("ElementManager", "📥 Added to root at index: " + index);
             } else {
                 elementTree.add(element);
+                android.util.Log.d("ElementManager", "📥 Added to root at end");
             }
         } else {
             // Move to new parent
             BlocElement newParent = findElementInTree(elementTree, newParentId);
             if (newParent != null) {
                 element.parentId = newParent.elementId;
-                if (index >= 0 && index < newParent.children.size()) {
-                    newParent.children.add(index, element);
-                } else {
-                    newParent.children.add(element);
-                }
+                
+                // التأكد من صحة الـ index
+                int safeIndex = Math.max(0, Math.min(index, newParent.children.size()));
+                newParent.children.add(safeIndex, element);
+                
+                android.util.Log.d("ElementManager", "📥 Added to parent: " + newParent.elementId + " at index: " + safeIndex);
             } else {
+                android.util.Log.e("ElementManager", "❌ New parent not found: " + newParentId);
+                
+                // استعادة إلى المكان القديم في حالة الفشل
+                restoreElementPosition(element, oldParentId);
                 return false;
             }
         }
         
+        android.util.Log.d("ElementManager", "✅ Element moved successfully");
         return true;
+    }
+    
+    /**
+     * التحقق من أن عنصر هو تابع لعنصر آخر
+     */
+    private boolean isDescendant(String potentialDescendantId, String ancestorId) {
+        BlocElement ancestor = findElementInTree(elementTree, ancestorId);
+        if (ancestor == null) return false;
+        
+        return checkDescendantRecursive(ancestor.children, potentialDescendantId);
+    }
+    
+    private boolean checkDescendantRecursive(List<BlocElement> children, String targetId) {
+        for (BlocElement child : children) {
+            if (child.elementId.equals(targetId)) {
+                return true;
+            }
+            if (checkDescendantRecursive(child.children, targetId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * استعادة موضع العنصر في حالة فشل عملية النقل
+     */
+    private void restoreElementPosition(BlocElement element, String oldParentId) {
+        if (oldParentId == null) {
+            elementTree.add(element);
+            element.parentId = null;
+        } else {
+            BlocElement oldParent = findElementInTree(elementTree, oldParentId);
+            if (oldParent != null) {
+                oldParent.children.add(element);
+                element.parentId = oldParent.elementId;
+            }
+        }
+        android.util.Log.d("ElementManager", "🔄 Element position restored");
     }
     
     /**

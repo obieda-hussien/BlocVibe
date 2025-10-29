@@ -43,12 +43,6 @@ public class EditorActivity extends AppCompatActivity {
     private List<BlocElement> elementTree;  // Main data model
     private BlocElement currentSelectedElement;
     private Gson gson = new Gson();
-    private ElementManager elementManager;  // Advanced element management
-    
-    // Debouncing system for canvas rendering
-    private android.os.Handler renderHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-    private Runnable pendingRenderTask = null;
-    private static final long RENDER_DEBOUNCE_DELAY_MS = 500; // 500ms delay
     
     private ExecutorService executorService;
     private ActivityResultLauncher<Intent> codeEditorResultLauncher;
@@ -94,9 +88,6 @@ public class EditorActivity extends AppCompatActivity {
                 } else {
                     elementTree = new ArrayList<>();
                 }
-                
-                // Initialize ElementManager
-                elementManager = new ElementManager(elementTree);
                 
                 if (getSupportActionBar() != null) {
                     getSupportActionBar().setTitle(project.name);
@@ -277,46 +268,6 @@ public class EditorActivity extends AppCompatActivity {
             renderCanvas(); // Re-render to remove highlight
         });
 
-        // Set up element management buttons
-        MaterialButton btnMoveUp = propertiesView.findViewById(R.id.btn_move_up);
-        MaterialButton btnMoveDown = propertiesView.findViewById(R.id.btn_move_down);
-        MaterialButton btnDuplicate = propertiesView.findViewById(R.id.btn_duplicate);
-        MaterialButton btnDelete = propertiesView.findViewById(R.id.btn_delete);
-        MaterialButton btnWrapInDiv = propertiesView.findViewById(R.id.btn_wrap_in_div);
-
-        btnMoveUp.setOnClickListener(v -> {
-            if (currentSelectedElement != null) {
-                handleElementMoveUp(currentSelectedElement.elementId);
-            }
-        });
-
-        btnMoveDown.setOnClickListener(v -> {
-            if (currentSelectedElement != null) {
-                handleElementMoveDown(currentSelectedElement.elementId);
-            }
-        });
-
-        btnDuplicate.setOnClickListener(v -> {
-            if (currentSelectedElement != null) {
-                handleElementDuplicate(currentSelectedElement.elementId);
-            }
-        });
-
-        btnDelete.setOnClickListener(v -> {
-            if (currentSelectedElement != null) {
-                handleElementDelete(currentSelectedElement.elementId);
-            }
-        });
-
-        btnWrapInDiv.setOnClickListener(v -> {
-            if (currentSelectedElement != null) {
-                List<String> ids = new ArrayList<>();
-                ids.add(currentSelectedElement.elementId);
-                String json = gson.toJson(ids);
-                handleElementsWrapInDiv(json);
-            }
-        });
-
         // Register for activity result from CodeEditorActivity
         codeEditorResultLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -390,45 +341,31 @@ public class EditorActivity extends AppCompatActivity {
         // 1. Build HTML from the elementTree
         String generatedHtml = buildHtmlRecursive(elementTree);
 
-        // 2. Load canvas interaction script from assets
-        String canvasScript = "";
-        try {
-            java.io.InputStream is = getAssets().open("canvas-interaction.js");
-            byte[] buffer = new byte[is.available()];
-            is.read(buffer);
-            is.close();
-            canvasScript = new String(buffer, "UTF-8");
-        } catch (Exception e) {
-            android.util.Log.e("BlocVibe", "Error loading canvas script", e);
-        }
-
-        // 3. Build the enhanced JS injection script
+        // 2. Build the JS click-injection script
         String jsInjectorScript = 
-            " <script>" + canvasScript + "</script>" +
             " <script>" +
-            "   // Highlight selected element" +
+            "   document.querySelectorAll('body *').forEach(el => {" +
+            "     el.onclick = function(e) {" +
+            "       e.stopPropagation();" + // Stop click from bubbling up
+            "       AndroidBridge.onElementSelected(this.getAttribute('id'));" +
+            "     };" +
+            "   });" +
+            // Add a visual highlight for the selected element
+            "   if(window.currentSelected) {" +
+            "     var prevEl = document.getElementById(window.currentSelected);" +
+            "     if(prevEl) prevEl.style.outline = 'none';" +
+            "   }" +
             (currentSelectedElement != null ? 
-            "   setTimeout(function() {" +
-            "     var selected = document.getElementById('" + currentSelectedElement.elementId + "');" +
-            "     if(selected) {" +
-            "       selected.style.outline = '2px solid #0D6EFD';" +
-            "       selected.style.backgroundColor = 'rgba(13, 110, 253, 0.1)';" +
-            "       selected.scrollIntoView({ behavior: 'smooth', block: 'center' });" +
-            "     }" +
-            "   }, 100);" : "") +
+            "   var selected = document.getElementById('" + currentSelectedElement.elementId + "');" +
+            "   if(selected) {" +
+            "     selected.style.outline = '2px dashed #0D6EFD';" + // Highlight
+            "     window.currentSelected = '" + currentSelectedElement.elementId + "';" +
+            "   }" : "") +
             " </script>";
 
-        // 4. Combine and load
-        String fullHtml = "<!DOCTYPE html><html><head>" +
-                          "<meta name='viewport' content='width=device-width, initial-scale=1.0'>" +
-                          "<style>" + currentProject.cssContent + 
-                          " body { padding: 10px; } " +
-                          " .bloc-dragging { opacity: 0.5; } " +
-                          " .bloc-selected { outline: 2px solid #0D6EFD !important; } " +
-                          "</style></head>" +
-                          "<body>" + generatedHtml + "</body>" + 
-                          jsInjectorScript + 
-                          "</html>";
+        // 3. Combine and load
+        String fullHtml = "<html><head><style>" + currentProject.cssContent + "</style></head>" +
+                          "<body>" + generatedHtml + "</body>" + jsInjectorScript + "</html>";
 
         binding.canvasWebview.loadDataWithBaseURL(null, fullHtml, "text/html", "UTF-8", null);
     }
@@ -579,167 +516,12 @@ public class EditorActivity extends AppCompatActivity {
     
     public void onWebViewPageReady() {
         // Called when WebView page is fully loaded
-        Toast.makeText(this, "Canvas ready", Toast.LENGTH_SHORT).show();
-    }
-
-    /**
-     * Advanced element management handlers
-     */
-    public void handleElementMove(String elementId, String newParentId, int index) {
-        android.util.Log.d("BlocVibe", "🎯 handleElementMove: " + elementId + " -> " + newParentId + " @ " + index);
-        
-        if (elementManager != null) {
-            // تحديث شجرة العناصر فوراً
-            boolean success = elementManager.moveElementToParent(elementId, newParentId, index);
-            
-            if (success) {
-                // حفظ المشروع في الخلفية
-                saveProjectInBackground();
-                
-                // تأخير إعادة رسم Canvas لتجنب التجميد أثناء drag
-                scheduleCanvasRender();
-                
-                android.util.Log.d("BlocVibe", "✅ Element moved successfully - render scheduled");
-            } else {
-                android.util.Log.e("BlocVibe", "❌ Failed to move element");
-            }
-        }
-    }
-    
-    /**
-     * جدولة إعادة رسم Canvas مع تأخير ذكي (debouncing)
-     * هذا يمنع إعادة الرسم المتكررة أثناء drag operations
-     */
-    private void scheduleCanvasRender() {
-        // إلغاء أي عملية رسم معلقة
-        if (pendingRenderTask != null) {
-            renderHandler.removeCallbacks(pendingRenderTask);
-        }
-        
-        // جدولة عملية رسم جديدة
-        pendingRenderTask = new Runnable() {
-            @Override
-            public void run() {
-                android.util.Log.d("BlocVibe", "🎨 Executing scheduled canvas render");
-                renderCanvas();
-                Snackbar.make(binding.getRoot(), "تم تحديث العرض", Snackbar.LENGTH_SHORT).show();
-                pendingRenderTask = null;
-            }
-        };
-        
-        renderHandler.postDelayed(pendingRenderTask, RENDER_DEBOUNCE_DELAY_MS);
-        android.util.Log.d("BlocVibe", "⏰ Canvas render scheduled in " + RENDER_DEBOUNCE_DELAY_MS + "ms");
-    }
-    
-    /**
-     * حفظ المشروع في الخلفية بدون blocking
-     */
-    private void saveProjectInBackground() {
-        if (currentProject == null) return;
-        
-        // Serialize element tree to JSON
-        currentProject.elementsJson = gson.toJson(elementTree);
-        currentProject.lastModified = System.currentTimeMillis();
-        
-        executorService.execute(() -> {
-            db.projectDao().updateProject(currentProject);
-            android.util.Log.d("BlocVibe", "💾 Project saved in background");
-        });
-    }
-
-    public void handleElementMoveUp(String elementId) {
-        if (elementManager != null) {
-            boolean success = elementManager.moveElementUp(elementId);
-            if (success) {
-                saveProject();
-                renderCanvas();
-                Snackbar.make(binding.getRoot(), "Element moved up", Snackbar.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "Cannot move up - already at top", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    public void handleElementMoveDown(String elementId) {
-        if (elementManager != null) {
-            boolean success = elementManager.moveElementDown(elementId);
-            if (success) {
-                saveProject();
-                renderCanvas();
-                Snackbar.make(binding.getRoot(), "Element moved down", Snackbar.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "Cannot move down - already at bottom", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    public void handleElementDelete(String elementId) {
-        if (elementManager != null) {
-            boolean success = elementManager.deleteElement(elementId);
-            if (success) {
-                currentSelectedElement = null;
-                binding.bottomSheetPalette.editorFlipper.setDisplayedChild(0); // Back to palette
-                saveProject();
-                renderCanvas();
-                Snackbar.make(binding.getRoot(), "Element deleted", Snackbar.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "Failed to delete element", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    public void handleElementDuplicate(String elementId) {
-        if (elementManager != null) {
-            BlocElement duplicate = elementManager.duplicateElement(elementId);
-            if (duplicate != null) {
-                saveProject();
-                renderCanvas();
-                Snackbar.make(binding.getRoot(), "Element duplicated", Snackbar.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "Failed to duplicate element", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    public void handleElementsWrapInDiv(String elementIdsJson) {
-        if (elementManager != null) {
-            try {
-                Type listType = new TypeToken<List<String>>(){}.getType();
-                List<String> elementIds = gson.fromJson(elementIdsJson, listType);
-                
-                BlocElement wrapper = elementManager.wrapElementsInDiv(elementIds);
-                if (wrapper != null) {
-                    saveProject();
-                    renderCanvas();
-                    Snackbar.make(binding.getRoot(), "Elements wrapped in container", 
-                        Snackbar.LENGTH_SHORT).show();
-                    
-                    // Select the wrapper
-                    currentSelectedElement = wrapper;
-                    handleElementSelection(wrapper.elementId);
-                } else {
-                    Toast.makeText(this, "Failed to wrap elements", Toast.LENGTH_SHORT).show();
-                }
-            } catch (Exception e) {
-                android.util.Log.e("BlocVibe", "Error wrapping elements", e);
-                Toast.makeText(this, "Error wrapping elements", Toast.LENGTH_SHORT).show();
-            }
-        }
+        Toast.makeText(this, "Page loaded", Toast.LENGTH_SHORT).show();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        
-        // إلغاء أي عمليات render معلقة
-        if (pendingRenderTask != null) {
-            renderHandler.removeCallbacks(pendingRenderTask);
-            pendingRenderTask = null;
-        }
-        
-        // إيقاف ExecutorService
         executorService.shutdown();
-        
-        android.util.Log.d("BlocVibe", "🧹 EditorActivity destroyed - cleanup complete");
     }
 }
