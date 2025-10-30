@@ -2332,11 +2332,32 @@ public class EditorActivity extends AppCompatActivity {
             String elementType = elementData.getString("type");
             String elementId = elementData.getString("id");
             String containerId = elementData.optString("containerId", "");
+            String textContent = elementData.optString("textContent", "");
             
             // إنشاء عنصر جديد مطابق لما أضافه JavaScript
-            Element newElement = new Element();
-            newElement.setType(elementType);
-            newElement.setId(elementId);
+            BlocElement newElement = new BlocElement(elementType);
+            newElement.elementId = elementId;
+            newElement.textContent = textContent;
+            
+            // إضافة styles إذا كانت موجودة
+            if (elementData.has("styles")) {
+                org.json.JSONObject styles = elementData.getJSONObject("styles");
+                java.util.Iterator<String> styleKeys = styles.keys();
+                while (styleKeys.hasNext()) {
+                    String key = styleKeys.next();
+                    newElement.styles.put(key, styles.getString(key));
+                }
+            }
+            
+            // إضافة attributes إذا كانت موجودة
+            if (elementData.has("attributes")) {
+                org.json.JSONObject attributes = elementData.getJSONObject("attributes");
+                java.util.Iterator<String> attrKeys = attributes.keys();
+                while (attrKeys.hasNext()) {
+                    String key = attrKeys.next();
+                    newElement.attributes.put(key, attributes.getString(key));
+                }
+            }
             
             // إضافة العنصر لـ elementTree
             runOnUiThread(() -> {
@@ -2346,9 +2367,10 @@ public class EditorActivity extends AppCompatActivity {
                     android.util.Log.d("EditorActivity", "تمت إضافة " + elementType + " (ID: " + elementId + ") للـ root");
                 } else {
                     // البحث عن الـ container وإضافة العنصر له
-                    Element container = findElementById(containerId);
+                    BlocElement container = findElementById(containerId);
                     if (container != null) {
-                        container.addChild(newElement);
+                        container.children.add(newElement);
+                        newElement.parentId = container.elementId;
                         android.util.Log.d("EditorActivity", "تمت إضافة " + elementType + " (ID: " + elementId + ") لـ " + containerId);
                     } else {
                         // إذا لم نجد الـ container، نضيف للـ root
@@ -2356,6 +2378,9 @@ public class EditorActivity extends AppCompatActivity {
                         android.util.Log.d("EditorActivity", "لم نجد " + containerId + "، تمت إضافة " + elementType + " للـ root");
                     }
                 }
+                
+                // حفظ المشروع بعد إضافة العنصر
+                saveProjectInBackground();
             });
             
         } catch (Exception e) {
@@ -2366,9 +2391,9 @@ public class EditorActivity extends AppCompatActivity {
     /**
      * العثور على عنصر في elementTree باستخدام ID
      */
-    private Element findElementById(String id) {
-        for (Element element : elementTree) {
-            Element found = findElementByIdRecursive(element, id);
+    private BlocElement findElementById(String id) {
+        for (BlocElement element : elementTree) {
+            BlocElement found = findElementByIdRecursive(element, id);
             if (found != null) return found;
         }
         return null;
@@ -2377,12 +2402,12 @@ public class EditorActivity extends AppCompatActivity {
     /**
      * البحث التكراري عن عنصر باستخدام ID
      */
-    private Element findElementByIdRecursive(Element element, String id) {
-        if (id.equals(element.getId())) {
+    private BlocElement findElementByIdRecursive(BlocElement element, String id) {
+        if (id.equals(element.elementId)) {
             return element;
         }
-        for (Element child : element.getChildren()) {
-            Element found = findElementByIdRecursive(child, id);
+        for (BlocElement child : element.children) {
+            BlocElement found = findElementByIdRecursive(child, id);
             if (found != null) return found;
         }
         return null;
