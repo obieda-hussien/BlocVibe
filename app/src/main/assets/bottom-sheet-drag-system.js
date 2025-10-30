@@ -1103,7 +1103,9 @@ class BottomSheetDragSystem {
                 type: this.getElementType(element),
                 id: element.id || this.generateElementId(),
                 containerId: zone ? zone.id : 'body',
-                properties: this.extractElementProperties(element)
+                textContent: element.textContent || '',
+                styles: this.extractElementStyles(element),
+                attributes: this.extractElementAttributes(element)
             };
             
             // التأكد من وجود ID للعنصر
@@ -1130,34 +1132,60 @@ class BottomSheetDragSystem {
      */
     getElementType(element) {
         const tagName = element.tagName.toLowerCase();
-        switch (tagName) {
-            case 'p': return 'paragraph';
-            case 'button': return 'button';
-            case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6': return 'heading';
-            case 'div': return 'div';
-            case 'img': return 'image';
-            case 'a': return 'link';
-            default: return tagName;
-        }
+        return tagName; // إرجاع اسم الـ tag مباشرة
     }
 
     /**
-     * توليد ID فريد للعنصر
+     * توليد ID فريد للعنصر (متطابق مع BlocElement format)
      */
     generateElementId() {
-        return 'element_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        const uuid = this.generateUUID().substring(0, 8);
+        return `bloc-${uuid}`;
     }
 
     /**
-     * استخراج خصائص العنصر
+     * توليد UUID مبسط
      */
-    extractElementProperties(element) {
-        return {
-            text: element.textContent || '',
-            style: element.style.cssText || '',
-            className: element.className || '',
-            tagName: element.tagName.toLowerCase()
-        };
+    generateUUID() {
+        return 'xxxx-xxxx-4xxx-yxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    /**
+     * استخراج styles العنصر
+     */
+    extractElementStyles(element) {
+        const styles = {};
+        if (element.style.cssText) {
+            // تحويل cssText إلى object
+            const styleDeclarations = element.style.cssText.split(';');
+            styleDeclarations.forEach(declaration => {
+                if (declaration.trim()) {
+                    const [property, value] = declaration.split(':').map(s => s.trim());
+                    if (property && value) {
+                        styles[property] = value;
+                    }
+                }
+            });
+        }
+        return styles;
+    }
+
+    /**
+     * استخراج attributes العنصر
+     */
+    extractElementAttributes(element) {
+        const attributes = {};
+        if (element.attributes) {
+            for (let i = 0; i < element.attributes.length; i++) {
+                const attr = element.attributes[i];
+                attributes[attr.name] = attr.value;
+            }
+        }
+        return attributes;
     }
 }
 
