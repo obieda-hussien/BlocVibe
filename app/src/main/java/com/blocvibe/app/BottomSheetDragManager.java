@@ -354,10 +354,8 @@ public class BottomSheetDragManager {
             // إعداد التباين
             setupVisualFeedback(elementType, startPoint);
             
-            // الاهتزاز
-            if (config.enableHapticFeedback && vibrator != null) {
-                vibrator.vibrate(50); // Short vibration
-            }
+            // الاهتزاز الآمن
+            safeVibrate(50); // Short vibration
             
             // كشف Drop Zones
             detectDropZones();
@@ -767,9 +765,7 @@ public class BottomSheetDragManager {
                 // إشعار تغيير الـ hover zone
                 showHoverFeedback(bestZone);
                 
-                if (config.enableHapticFeedback) {
-                    vibrator.vibrate(30);
-                }
+                safeVibrate(30);
             }
         } else {
             if (currentHoverZone != null) {
@@ -1116,6 +1112,31 @@ public class BottomSheetDragManager {
         dragCount++;
         if (currentMetrics != null) {
             totalDragTime += currentMetrics.getDuration();
+        }
+    }
+    
+    /**
+     * اهتزاز آمن - لا يفشل عملية السحب إذا فشل الاهتزاز
+     */
+    private void safeVibrate(long milliseconds) {
+        if (!config.enableHapticFeedback || vibrator == null) {
+            return;
+        }
+        
+        try {
+            // التحقق من أن الجهاز يدعم الاهتزاز
+            if (vibrator.hasVibrator()) {
+                vibrator.vibrate(milliseconds);
+                Log.d(TAG, "Vibration triggered: " + milliseconds + "ms");
+            } else {
+                Log.d(TAG, "Device does not support vibration");
+            }
+        } catch (SecurityException e) {
+            // فشل بسبب عدم وجود permission - نتجاهله ونكمل
+            Log.w(TAG, "Vibration permission denied - continuing without haptic feedback");
+        } catch (Exception e) {
+            // أي خطأ آخر - نتجاهله ونكمل
+            Log.w(TAG, "Vibration failed: " + e.getMessage() + " - continuing without haptic feedback");
         }
     }
     
