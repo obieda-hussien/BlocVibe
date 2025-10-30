@@ -457,7 +457,19 @@ public class EditorActivity extends AppCompatActivity {
         // 1. Build HTML from the elementTree
         String generatedHtml = buildHtmlRecursive(elementTree);
 
-        // 2. Load canvas interaction script from assets
+        // 2. Load bottom-sheet-drag-system script from assets
+        String bottomSheetDragScript = "";
+        try {
+            java.io.InputStream is = getAssets().open("bottom-sheet-drag-system.js");
+            byte[] buffer = new byte[is.available()];
+            is.read(buffer);
+            is.close();
+            bottomSheetDragScript = new String(buffer, "UTF-8");
+        } catch (Exception e) {
+            android.util.Log.e("BlocVibe", "Error loading bottom-sheet-drag-system script", e);
+        }
+
+        // 3. Load canvas interaction script from assets
         String canvasScript = "";
         try {
             java.io.InputStream is = getAssets().open("canvas-interaction.js");
@@ -469,8 +481,9 @@ public class EditorActivity extends AppCompatActivity {
             android.util.Log.e("BlocVibe", "Error loading canvas script", e);
         }
 
-        // 3. Build the enhanced JS injection script
+        // 4. Build the enhanced JS injection script
         String jsInjectorScript = 
+            " <script>" + bottomSheetDragScript + "</script>" +
             " <script>" + canvasScript + "</script>" +
             " <script>" +
             "   // Highlight selected element" +
@@ -485,7 +498,7 @@ public class EditorActivity extends AppCompatActivity {
             "   }, 100);" : "") +
             " </script>";
 
-        // 4. Combine and load
+        // 5. Combine and load
         String fullHtml = "<!DOCTYPE html><html><head>" +
                           "<meta name='viewport' content='width=device-width, initial-scale=1.0'>" +
                           "<style>" + currentProject.cssContent + 

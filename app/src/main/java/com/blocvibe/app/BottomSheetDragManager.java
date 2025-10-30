@@ -1249,10 +1249,11 @@ public class BottomSheetDragManager {
         // إشعار JavaScript layer
         if (activity.getWebView() != null) {
             String script = String.format(
-                "window.BlocVibeCanvas.handleBottomSheetDrop('%s', '%s', %d, %d);",
+                "if (typeof window.handleBottomSheetDrop === 'function') { window.handleBottomSheetDrop('%s', '%s', %d, %d); } else { console.error('handleBottomSheetDrop not defined'); }",
                 elementType, zone.id, position.x, position.y
             );
             activity.getWebView().evaluateJavascript(script, null);
+            Log.d(TAG, "Notified JavaScript layer: " + elementType + " at (" + position.x + ", " + position.y + ")");
         }
     }
     
