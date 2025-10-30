@@ -634,7 +634,7 @@ public class ElementManager {
         // تحليل أنواع العناصر
         Map<String, Integer> elementTypes = new HashMap<>();
         for (BlocElement element : elements) {
-            String type = element.elementType;
+            String type = element.tag;
             elementTypes.put(type, elementTypes.getOrDefault(type, 0) + 1);
         }
         hints.put("elementTypes", elementTypes);
@@ -882,7 +882,7 @@ public class ElementManager {
     
     private void analyzeTypeRecursive(List<BlocElement> elements, Map<String, Integer> distribution) {
         for (BlocElement element : elements) {
-            String type = element.elementType;
+            String type = element.tag;
             distribution.put(type, distribution.getOrDefault(type, 0) + 1);
             
             if (element.children != null && !element.children.isEmpty()) {
@@ -928,7 +928,7 @@ public class ElementManager {
         Map<String, Integer> typeCount = new HashMap<>();
         
         for (BlocElement element : elements) {
-            String key = element.elementType;
+            String key = element.tag;
             typeCount.put(key, typeCount.getOrDefault(key, 0) + 1);
         }
         
@@ -1023,7 +1023,7 @@ public class ElementManager {
     
     private void calculateElementTypeCountRecursive(List<BlocElement> elements, Set<String> types) {
         for (BlocElement element : elements) {
-            types.add(element.elementType);
+            types.add(element.tag);
             if (element.children != null) {
                 calculateElementTypeCountRecursive(element.children, types);
             }
@@ -1235,7 +1235,7 @@ public class ElementManager {
     
     private void findElementsByTypeRecursive(List<BlocElement> elements, String elementType, List<String> foundIds) {
         for (BlocElement element : elements) {
-            if (element.elementType != null && element.elementType.equals(elementType)) {
+            if (element.tag != null && element.tag.equals(elementType)) {
                 foundIds.add(element.elementId);
             }
             
@@ -1330,10 +1330,10 @@ public class ElementManager {
                                                 Map<String, Integer> typeDepthSum) {
         for (BlocElement element : elements) {
             // عدد الأنواع
-            typeCounts.put(element.elementType, typeCounts.getOrDefault(element.elementType, 0) + 1);
+            typeCounts.put(element.tag, typeCounts.getOrDefault(element.tag, 0) + 1);
             
             // مجموع العمق لكل نوع
-            typeDepthSum.put(element.elementType, typeDepthSum.getOrDefault(element.elementType, 0) + depth);
+            typeDepthSum.put(element.tag, typeDepthSum.getOrDefault(element.tag, 0) + depth);
             
             if (element.children != null) {
                 calculateTypeStatisticsRecursive(element.children, depth + 1, typeCounts, typeDepthSum);
@@ -1413,7 +1413,7 @@ public class ElementManager {
     
     private void findElementsByTypeRecursiveForStats(List<BlocElement> elements, Map<String, List<String>> typeMap) {
         for (BlocElement element : elements) {
-            String type = element.elementType;
+            String type = element.tag;
             if (!typeMap.containsKey(type)) {
                 typeMap.put(type, new ArrayList<>());
             }

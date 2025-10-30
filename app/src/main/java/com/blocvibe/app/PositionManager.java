@@ -225,6 +225,7 @@ public class PositionManager {
         public int top;
         public int width;
         public int height;
+        public int index;  // Added for position calculations
         public Map<String, Integer> margins;
         public Map<String, Integer> paddings;
         public boolean isValid;
@@ -244,8 +245,8 @@ public class PositionManager {
         /**
          * تحويل الحسابات إلى constraints للـ ConstraintLayout
          */
-        public Map<String, Integer> toConstraintLayoutRules() {
-            Map<String, Integer> rules = new HashMap<>();
+        public Map<Integer, Integer> toConstraintLayoutRules() {
+            Map<Integer, Integer> rules = new HashMap<>();
             
             switch (positionType) {
                 case CENTER:
@@ -640,7 +641,7 @@ public class PositionManager {
      */
     private void applyMediumScreenRules(PositionCalculation calc) {
         // قواعد متوسطة
-        calc.width = calc.width * 0.8f;
+        calc.width = (int) (calc.width * 0.8f);
         calc.left = (getParentWidth(getElementInfo(calc.targetParent)) - calc.width) / 2;
     }
 
@@ -918,14 +919,16 @@ public class PositionManager {
      * تحويل BlocElement إلى ElementInfo
      */
     private ElementInfo convertBlocElementToElementInfo(BlocElement element) {
-        ElementInfo info = new ElementInfo(element.elementId, element.elementType);
+        ElementInfo info = new ElementInfo(element.elementId, element.tag);
         
         try {
-            info.width = parseDimension(element.properties.get("width"));
-            info.height = parseDimension(element.properties.get("height"));
-            info.currentPosition = parsePositionType(element.properties.get("position"));
-            info.isResponsive = Boolean.parseBoolean(element.properties.get("responsive"));
-            info.properties.putAll(element.properties);
+            info.width = parseDimension(element.styles.get("width"));
+            info.height = parseDimension(element.styles.get("height"));
+            info.currentPosition = parsePositionType(element.styles.get("position"));
+            info.isResponsive = Boolean.parseBoolean(element.attributes.get("responsive"));
+            // Copy both styles and attributes to properties
+            info.properties.putAll(element.styles);
+            info.properties.putAll(element.attributes);
             
         } catch (Exception e) {
             Log.w(TAG, "تحذير في تحويل BlocElement: " + e.getMessage());
@@ -939,16 +942,19 @@ public class PositionManager {
      */
     private void applyBlocConstraints(BlocElement element) {
         // تطبيق القيود من خصائص BlocElement
+        // Note: constraints field needs to be added to BlocElement or this method removed
+        // For now, we'll skip this to avoid compilation errors
+        /*
         Map<String, Object> constraints = element.constraints;
         
-        if (constraints.containsKey("maxWidth")) {
+        if (constraints != null && constraints.containsKey("maxWidth")) {
             applyMaxWidthConstraint(element.elementId, (Integer) constraints.get("maxWidth"));
         }
         
-        if (constraints.containsKey("minHeight")) {
+        if (constraints != null && constraints.containsKey("minHeight")) {
             applyMinHeightConstraint(element.elementId, (Integer) constraints.get("minHeight"));
         }
-        
+        */
         // تطبيق قيود أخرى...
     }
 
