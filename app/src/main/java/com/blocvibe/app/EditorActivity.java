@@ -855,8 +855,29 @@ public class EditorActivity extends AppCompatActivity {
         }
         
         // التحقق من صحة التغيير
-        if (!validatePropertyChange(elementId, property, value)) {
+        String validationResult = validatePropertyChange(elementId, property, value);
+        if (validationResult == null || validationResult.isEmpty()) {
             android.util.Log.w(PROPERTIES_PANEL_TAG, "فشل التحقق من صحة التغيير");
+            return;
+        }
+        
+        // تحليل نتيجة التحقق من JSON
+        try {
+            JSONObject result = new JSONObject(validationResult);
+            boolean isValid = result.getBoolean("valid");
+            if (!isValid) {
+                JSONArray errors = result.getJSONArray("errors");
+                StringBuilder errorMessage = new StringBuilder();
+                for (int i = 0; i < errors.length(); i++) {
+                    if (i > 0) errorMessage.append("\n");
+                    errorMessage.append("- ").append(errors.getString(i));
+                }
+                android.util.Log.w(PROPERTIES_PANEL_TAG, "فشل التحقق من صحة التغيير: " + errorMessage.toString());
+                showValidationErrorMessage(errorMessage.toString());
+                return;
+            }
+        } catch (JSONException e) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "خطأ في معالجة نتيجة التحقق", e);
             return;
         }
         
