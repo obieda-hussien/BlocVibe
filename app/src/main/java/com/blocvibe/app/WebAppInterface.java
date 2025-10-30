@@ -1132,6 +1132,28 @@ public class WebAppInterface {
     }
 
     /**
+     * مزامنة elementTree مع تغييرات DOM من JavaScript
+     * تُستدعى عندما يضيف JavaScript عنصراً جديداً في DOM
+     * Sync elementTree with DOM changes from JavaScript
+     * Called when JavaScript adds a new element to DOM
+     * @param elementDataJson JSON string containing element data
+     */
+    @JavascriptInterface
+    public void syncElementTreeFromDOM(String elementDataJson) {
+        try {
+            Log.d(TAG, "Syncing elementTree from DOM: " + elementDataJson);
+            if (activity != null) {
+                activity.runOnUiThread(() -> {
+                    activity.syncElementTreeFromDOM(elementDataJson);
+                });
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in syncElementTreeFromDOM: " + e.getMessage());
+            reportError("ELEMENT_SYNC_ERROR", "خطأ في مزامنة elementTree: " + e.getMessage(), "syncElementTreeFromDOM");
+        }
+    }
+
+    /**
      * الحصول على حالة Bottom Sheet Drag
      * Get bottom sheet drag state
      */

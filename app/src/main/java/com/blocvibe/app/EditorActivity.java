@@ -201,8 +201,8 @@ public class EditorActivity extends AppCompatActivity {
                                     android.util.Log.d("EditorActivity", "Added " + tag + " to root");
                                 }
                                 
-                                // إعادة رسم Canvas مع إشعار المستخدم
-                                renderCanvas();
+                                // لا نعيد رسم Canvas هنا - JavaScript سيتولى إضافة العنصر
+                                // TODO: إضافة مزامنة elementTree مع DOM changes
                                 Snackbar.make(binding.getRoot(), "تم إضافة " + tag + " بنجاح", Snackbar.LENGTH_SHORT).show();
                             }
                         }
@@ -2316,5 +2316,75 @@ public class EditorActivity extends AppCompatActivity {
      */
     public BottomSheetDragManager getBottomSheetDragManager() {
         return bottomSheetDragManager;
+    }
+
+    /**
+     * مزامنة elementTree مع تغييرات DOM من JavaScript
+     * يُستدعى عندما يضيف JavaScript عنصراً جديداً في DOM
+     */
+    @android.webkit.JavascriptInterface
+    public void syncElementTreeFromDOM(String elementDataJson) {
+        try {
+            android.util.Log.d("EditorActivity", "مزامنة elementTree: " + elementDataJson);
+            
+            // تحليل JSON المرسل من JavaScript
+            org.json.JSONObject elementData = new org.json.JSONObject(elementDataJson);
+            String elementType = elementData.getString("type");
+            String elementId = elementData.getString("id");
+            String containerId = elementData.optString("containerId", "");
+            
+            // إنشاء عنصر جديد مطابق لما أضافه JavaScript
+            Element newElement = new Element();
+            newElement.setType(elementType);
+            newElement.setId(elementId);
+            
+            // إضافة العنصر لـ elementTree
+            runOnUiThread(() -> {
+                if (containerId.isEmpty() || containerId.equals("body")) {
+                    // إضافة للـ root
+                    elementTree.add(newElement);
+                    android.util.Log.d("EditorActivity", "تمت إضافة " + elementType + " (ID: " + elementId + ") للـ root");
+                } else {
+                    // البحث عن الـ container وإضافة العنصر له
+                    Element container = findElementById(containerId);
+                    if (container != null) {
+                        container.addChild(newElement);
+                        android.util.Log.d("EditorActivity", "تمت إضافة " + elementType + " (ID: " + elementId + ") لـ " + containerId);
+                    } else {
+                        // إذا لم نجد الـ container، نضيف للـ root
+                        elementTree.add(newElement);
+                        android.util.Log.d("EditorActivity", "لم نجد " + containerId + "، تمت إضافة " + elementType + " للـ root");
+                    }
+                }
+            });
+            
+        } catch (Exception e) {
+            android.util.Log.e("EditorActivity", "خطأ في مزامنة elementTree: " + e.getMessage());
+        }
+    }
+
+    /**
+     * العثور على عنصر في elementTree باستخدام ID
+     */
+    private Element findElementById(String id) {
+        for (Element element : elementTree) {
+            Element found = findElementByIdRecursive(element, id);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    /**
+     * البحث التكراري عن عنصر باستخدام ID
+     */
+    private Element findElementByIdRecursive(Element element, String id) {
+        if (id.equals(element.getId())) {
+            return element;
+        }
+        for (Element child : element.getChildren()) {
+            Element found = findElementByIdRecursive(child, id);
+            if (found != null) return found;
+        }
+        return null;
     }
 }
