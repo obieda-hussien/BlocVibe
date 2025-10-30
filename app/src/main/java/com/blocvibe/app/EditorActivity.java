@@ -129,16 +129,39 @@ public class EditorActivity extends AppCompatActivity {
             }
         });
 
-        // Set up drag listener on WebView
+        // Set up enhanced drag listener on WebView
         binding.canvasWebview.setOnDragListener(new View.OnDragListener() {
+            private android.graphics.Point dragPoint = null;
+            
             @Override
             public boolean onDrag(View v, DragEvent event) {
                 switch (event.getAction()) {
                     case DragEvent.ACTION_DRAG_STARTED:
+                        android.util.Log.d("EditorActivity", "Drag started on WebView");
+                        dragPoint = new android.graphics.Point((int) event.getX(), (int) event.getY());
                         return true;
+                        
+                    case DragEvent.ACTION_DRAG_LOCATION:
+                        dragPoint = new android.graphics.Point((int) event.getX(), (int) event.getY());
+                        return true;
+                        
                     case DragEvent.ACTION_DRAG_ENTERED:
+                        android.util.Log.d("EditorActivity", "Drag entered WebView");
+                        // إضافة تأثير بصري للمنطقة المستهدفة
+                        binding.canvasWebview.setBackgroundColor(android.graphics.Color.parseColor("#F0F8FF"));
                         return true;
+                        
+                    case DragEvent.ACTION_DRAG_EXITED:
+                        android.util.Log.d("EditorActivity", "Drag exited WebView");
+                        // إزالة التأثير البصري
+                        binding.canvasWebview.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+                        return true;
+                        
                     case DragEvent.ACTION_DROP:
+                        android.util.Log.d("EditorActivity", "Drop on WebView");
+                        // إزالة التأثير البصري
+                        binding.canvasWebview.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+                        
                         ClipData clipData = event.getClipData();
                         if (clipData != null && clipData.getItemCount() > 0) {
                             String droppedHtml = clipData.getItemAt(0).getText().toString();
@@ -164,17 +187,34 @@ public class EditorActivity extends AppCompatActivity {
                                     newElement.styles.put("border", "1px solid #ccc");
                                 }
                                 
+                                // حساب الموقع الأمثل للعنصر الجديد
+                                if (dragPoint != null) {
+                                    android.util.Log.d("EditorActivity", "Drop position: (" + dragPoint.x + ", " + dragPoint.y + ")");
+                                }
+                                
                                 // Check for nesting: add to selected element or root
                                 if (currentSelectedElement != null) {
                                     currentSelectedElement.children.add(newElement);
+                                    android.util.Log.d("EditorActivity", "Added " + tag + " to parent: " + currentSelectedElement.tag);
                                 } else {
                                     elementTree.add(newElement);
+                                    android.util.Log.d("EditorActivity", "Added " + tag + " to root");
                                 }
                                 
+                                // إعادة رسم Canvas مع إشعار المستخدم
                                 renderCanvas();
+                                Snackbar.make(binding.getRoot(), "تم إضافة " + tag + " بنجاح", Snackbar.LENGTH_SHORT).show();
                             }
                         }
                         return true;
+                        
+                    case DragEvent.ACTION_DRAG_ENDED:
+                        android.util.Log.d("EditorActivity", "Drag ended");
+                        // إزالة التأثير البصري
+                        binding.canvasWebview.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+                        dragPoint = null;
+                        return true;
+                        
                     default:
                         return true;
                 }

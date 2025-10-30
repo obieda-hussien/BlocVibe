@@ -1155,9 +1155,22 @@ public class BottomSheetDragManager {
     }
     
     private void handleDragEnded(DragEvent event) {
-        Log.d(TAG, "Android drag ended");
-        if (currentState != DragState.DROPPING) {
-            cancelDrag("Android drag ended unexpectedly");
+        Log.d(TAG, "Android drag ended - current state: " + currentState);
+        
+        // معالجة أفضل للحالات المختلفة
+        if (currentState == DragState.DRAGGING || currentState == DragState.HOVERING) {
+            // إنهاء السحب بشكل طبيعي
+            Log.d(TAG, "Drag ended during drag/hover state - finalizing");
+            endDrag();
+        } else if (currentState != DragState.DROPPING && currentState != DragState.IDLE) {
+            // إلغاء فقط في الحالات غير المتوقعة
+            Log.w(TAG, "Android drag ended unexpectedly in state: " + currentState);
+            cancelDrag("Android drag ended in unexpected state: " + currentState);
+        }
+        
+        // إعادة تعيين الحالة إلى IDLE
+        if (currentState != DragState.IDLE) {
+            currentState = DragState.IDLE;
         }
     }
     
