@@ -28,6 +28,15 @@
         android:id="@+id/bottom_sheet_palette"
         layout="@layout/bottom_sheet_palette" />
 
+    <!-- Flexbox Visual Controls Panel -->
+    <include
+        android:id="@+id/flexbox_visual_controls"
+        layout="@layout/flexbox_visual_controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:visibility="gone" />
+
     <!-- FAB to toggle components palette -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fab_toggle_palette"
