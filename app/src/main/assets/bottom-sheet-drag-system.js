@@ -709,6 +709,7 @@ class BottomSheetDragSystem {
             }
             
             // إشعار Java layer
+            const dropPoint = session.endPoint || session.currentPoint || session.startPoint;
             if (window.AndroidBridge && typeof window.AndroidBridge.onBottomSheetDrop === 'function') {
                 window.AndroidBridge.onBottomSheetDrop(
                     session.elementType,
@@ -718,6 +719,7 @@ class BottomSheetDragSystem {
                 );
             }
             
+            console.log('[BottomSheetDrag] Element added successfully:', newElement);
             return true;
             
         } catch (error) {
