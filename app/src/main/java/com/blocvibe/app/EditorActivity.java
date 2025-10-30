@@ -9,6 +9,7 @@ import android.view.DragEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -24,8 +25,12 @@ import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -930,64 +935,91 @@ public class EditorActivity extends AppCompatActivity {
      * @param elementId معرف العنصر
      * @param property اسم الخاصية
      * @param value القيمة الجديدة
-     * @return true إذا كان التغيير صحيحاً، false خلاف ذلك
+     * @return JSON string مع نتيجة التحقق
      */
-    public boolean validatePropertyChange(String elementId, String property, String value) {
+    public String validatePropertyChange(String elementId, String property, String value) {
         android.util.Log.d(PROPERTIES_PANEL_TAG, "التحقق من صحة التغيير: " + property + " = " + value);
         
-        StringBuilder errors = new StringBuilder();
-        
-        // التحقق من القيم الفارغة
-        if (value == null || value.trim().isEmpty()) {
-            errors.append("• يجب إدخال قيمة\n");
-        }
-        
-        // التحقق من صحة قيم CSS
-        if (property.equals("color") || property.equals("background-color") || property.equals("border-color")) {
-            if (!value.equals("inherit") && !value.equals("transparent") && !HEX_COLOR_PATTERN.matcher(value).matches()) {
-                errors.append("• قيمة اللون غير صحيحة (استخدم formato hex مثل #FF0000)\n");
-            }
-        }
-        
-        // التحقق من قيم الأبعاد
-        if (property.equals("width") || property.equals("height") || property.equals("padding") || property.equals("margin")) {
-            if (!CSS_DIMENSION_PATTERN.matcher(value).matches() && !value.equals("0")) {
-                errors.append("• قيمة الأبعاد غير صحيحة (مثال: 100px, 50%, auto)\n");
-            }
-        }
-        
-        // التحقق من قيم CSS العامة
-        if (!CSS_VALUE_PATTERN.matcher(value).matches() && value.length() > 50) {
-            errors.append("• القيمة تحتوي على أحرف غير مسموحة\n");
-        }
-        
-        // التحقق من قيم ID المميزة
-        if (property.equals("id")) {
-            if (value.contains(" ") || value.contains("#") || value.contains(".")) {
-                errors.append("• معرف العنصر لا يمكن أن يحتوي على مسافات أو رموز خاصة\n");
+        try {
+            JSONObject result = new JSONObject();
+            JSONArray errors = new JSONArray();
+            
+            boolean isValid = true;
+            
+            // التحقق من القيم الفارغة
+            if (value == null || value.trim().isEmpty()) {
+                errors.put("يجب إدخال قيمة");
+                isValid = false;
             }
             
-            // التحقق من عدم تكرار المعرف
-            if (isElementIdDuplicate(elementId, value)) {
-                errors.append("• معرف العنصر مستخدم بالفعل\n");
+            // التحقق من صحة قيم CSS
+            if (property.equals("color") || property.equals("background-color") || property.equals("border-color")) {
+                if (!value.equals("inherit") && !value.equals("transparent") && !HEX_COLOR_PATTERN.matcher(value).matches()) {
+                    errors.put("قيمة اللون غير صحيحة (استخدم formato hex مثل #FF0000)");
+                    isValid = false;
+                }
+            }
+            
+            // التحقق من قيم الأبعاد
+            if (property.equals("width") || property.equals("height") || property.equals("padding") || property.equals("margin")) {
+                if (!CSS_DIMENSION_PATTERN.matcher(value).matches() && !value.equals("0")) {
+                    errors.put("قيمة الأبعاد غير صحيحة (مثال: 100px, 50%, auto)");
+                    isValid = false;
+                }
+            }
+            
+            // التحقق من قيم CSS العامة
+            if (!CSS_VALUE_PATTERN.matcher(value).matches() && value.length() > 50) {
+                errors.put("القيمة تحتوي على أحرف غير مسموحة");
+                isValid = false;
+            }
+            
+            // التحقق من قيم ID المميزة
+            if (property.equals("id")) {
+                if (value.contains(" ") || value.contains("#") || value.contains(".")) {
+                    errors.put("معرف العنصر لا يمكن أن يحتوي على مسافات أو رموز خاصة");
+                    isValid = false;
+                }
+                
+                // التحقق من عدم تكرار المعرف
+                if (isElementIdDuplicate(elementId, value)) {
+                    errors.put("معرف العنصر مستخدم بالفعل");
+                    isValid = false;
+                }
+            }
+            
+            // التحقق من قيم Class
+            if (property.equals("class")) {
+                if (value.contains("<") || value.contains(">") || value.contains("&") || value.contains("\"")) {
+                    errors.put("اسم الفئة لا يمكن أن يحتوي على رموز HTML");
+                    isValid = false;
+                }
+            }
+            
+            // إرجاع النتيجة
+            result.put("valid", isValid);
+            result.put("errors", errors);
+            
+            if (!isValid) {
+                handlePropertyValidationFailed(elementId, errors.toString());
+            }
+            
+            android.util.Log.d(PROPERTIES_PANEL_TAG, "التحقق من صحة التغيير نجح: " + isValid);
+            return result.toString();
+            
+        } catch (Exception e) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "خطأ في التحقق من صحة الخاصية: " + e.getMessage());
+            try {
+                JSONObject errorResult = new JSONObject();
+                errorResult.put("valid", false);
+                JSONArray errorArray = new JSONArray();
+                errorArray.put("خطأ في التحقق: " + e.getMessage());
+                errorResult.put("errors", errorArray);
+                return errorResult.toString();
+            } catch (JSONException e1) {
+                return "{\"valid\": false, \"errors\": [\"خطأ في العملية\"]}";
             }
         }
-        
-        // التحقق من قيم Class
-        if (property.equals("class")) {
-            if (value.contains("<") || value.contains(">") || value.contains("&") || value.contains("\"")) {
-                errors.append("• اسم الفئة لا يمكن أن يحتوي على رموز HTML\n");
-            }
-        }
-        
-        // إرجاع النتيجة
-        if (errors.length() > 0) {
-            handlePropertyValidationFailed(elementId, errors.toString());
-            return false;
-        }
-        
-        android.util.Log.d(PROPERTIES_PANEL_TAG, "التحقق من صحة التغيير نجح");
-        return true;
     }
     
     /**
@@ -1341,6 +1373,350 @@ public class EditorActivity extends AppCompatActivity {
      */
     public String getCurrentElementIdInProperties() {
         return currentElementId;
+    }
+    
+    /**
+     * معالجة طلب عرض لوحة الخصائص
+     */
+    public void handlePropertiesPanelRequest(String elementId) {
+        handlePropertiesPanelRequested(elementId);
+    }
+    
+    /**
+     * الحصول على خصائص العنصر
+     */
+    public String getElementProperties(String elementId) {
+        try {
+            BlocElement element = findElementById(elementTree, elementId);
+            if (element == null) {
+                return "{}";
+            }
+            
+            JSONObject properties = new JSONObject();
+            properties.put("id", element.attributes.get("id"));
+            properties.put("class", element.attributes.get("class"));
+            properties.put("tag", element.tag);
+            properties.put("textContent", element.textContent);
+            
+            // Add styles
+            JSONObject styles = new JSONObject();
+            for (Map.Entry<String, String> entry : element.styles.entrySet()) {
+                styles.put(entry.getKey(), entry.getValue());
+            }
+            properties.put("styles", styles);
+            
+            // Add attributes
+            JSONObject attributes = new JSONObject();
+            for (Map.Entry<String, String> entry : element.attributes.entrySet()) {
+                attributes.put(entry.getKey(), entry.getValue());
+            }
+            properties.put("attributes", attributes);
+            
+            return properties.toString();
+        } catch (Exception e) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "Error getting element properties: " + e.getMessage());
+            return "{}";
+        }
+    }
+    
+    /**
+     * الحصول على الخصائص المتاحة للعنصر
+     */
+    public String getAvailableProperties(String elementId, String elementType) {
+        try {
+            JSONObject available = new JSONObject();
+            
+            // Basic properties
+            JSONArray basic = new JSONArray();
+            basic.put("id");
+            basic.put("class");
+            basic.put("width");
+            basic.put("height");
+            basic.put("color");
+            basic.put("background-color");
+            basic.put("padding");
+            basic.put("margin");
+            available.put("basic", basic);
+            
+            // Type-specific properties
+            if (elementType != null) {
+                JSONArray specific = new JSONArray();
+                switch (elementType.toLowerCase()) {
+                    case "a":
+                        specific.put("href");
+                        specific.put("target");
+                        break;
+                    case "img":
+                        specific.put("src");
+                        specific.put("alt");
+                        specific.put("width");
+                        specific.put("height");
+                        break;
+                    case "button":
+                        specific.put("type");
+                        specific.put("disabled");
+                        break;
+                    case "div":
+                    case "section":
+                    case "article":
+                        specific.put("display");
+                        specific.put("flex-direction");
+                        specific.put("justify-content");
+                        specific.put("align-items");
+                        break;
+                }
+                available.put("specific", specific);
+            }
+            
+            return available.toString();
+        } catch (Exception e) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "Error getting available properties: " + e.getMessage());
+            return "{}";
+        }
+    }
+    
+    /**
+     * حفظ خصائص متعددة للعنصر
+     */
+    public String saveMultipleProperties(String elementId, String propertiesJson) {
+        try {
+            JSONObject result = new JSONObject();
+            result.put("success", false);
+            
+            BlocElement element = findElementById(elementTree, elementId);
+            if (element == null) {
+                result.put("message", "العنصر غير موجود");
+                return result.toString();
+            }
+            
+            JSONObject properties = new JSONObject(propertiesJson);
+            Iterator<String> keys = properties.keys();
+            
+            while (keys.hasNext()) {
+                String key = keys.next();
+                String value = properties.getString(key);
+                
+                // Update based on property type
+                if (key.equals("id") || key.equals("class")) {
+                    element.attributes.put(key, value);
+                } else {
+                    element.styles.put(key, value);
+                }
+            }
+            
+            result.put("success", true);
+            result.put("message", "تم حفظ الخصائص بنجاح");
+            
+            // Save and re-render
+            saveProjectInBackground();
+            scheduleCanvasRender();
+            
+            return result.toString();
+        } catch (Exception e) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "Error saving multiple properties: " + e.getMessage());
+            JSONObject result = new JSONObject();
+            try {
+                result.put("success", false);
+                result.put("message", "خطأ في حفظ الخصائص: " + e.getMessage());
+            } catch (JSONException e1) {
+                return "{\"success\": false, \"message\": \"خطأ في العملية\"}";
+            }
+            return result.toString();
+        }
+    }
+    
+    /**
+     * إعادة تعيين خاصية للعنصر إلى قيمتها الافتراضية
+     */
+    public String resetPropertyToDefault(String elementId, String property) {
+        try {
+            JSONObject result = new JSONObject();
+            result.put("success", false);
+            
+            BlocElement element = findElementById(elementTree, elementId);
+            if (element == null) {
+                result.put("message", "العنصر غير موجود");
+                return result.toString();
+            }
+            
+            // Remove property based on type
+            if (property.equals("id") || property.equals("class")) {
+                element.attributes.remove(property);
+            } else {
+                element.styles.remove(property);
+            }
+            
+            result.put("success", true);
+            result.put("message", "تم إعادة تعيين الخاصية");
+            
+            // Save and re-render
+            saveProjectInBackground();
+            scheduleCanvasRender();
+            
+            return result.toString();
+        } catch (Exception e) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "Error resetting property: " + e.getMessage());
+            JSONObject result = new JSONObject();
+            try {
+                result.put("success", false);
+                result.put("message", "خطأ في إعادة التعيين: " + e.getMessage());
+            } catch (JSONException e1) {
+                return "{\"success\": false, \"message\": \"خطأ في العملية\"}";
+            }
+            return result.toString();
+        }
+    }
+    
+    /**
+     * نسخ خصائص من عنصر إلى آخر
+     */
+    public String copyProperties(String sourceElementId, String targetElementId, String propertiesJson) {
+        try {
+            JSONObject result = new JSONObject();
+            result.put("success", false);
+            
+            BlocElement sourceElement = findElementById(elementTree, sourceElementId);
+            BlocElement targetElement = findElementById(elementTree, targetElementId);
+            
+            if (sourceElement == null || targetElement == null) {
+                result.put("message", "أحد العناصر غير موجود");
+                return result.toString();
+            }
+            
+            JSONArray properties = new JSONArray(propertiesJson);
+            
+            for (int i = 0; i < properties.length(); i++) {
+                String property = properties.getString(i);
+                
+                // Copy based on property type
+                if (property.equals("id") || property.equals("class")) {
+                    if (sourceElement.attributes.containsKey(property)) {
+                        targetElement.attributes.put(property, sourceElement.attributes.get(property));
+                    }
+                } else {
+                    if (sourceElement.styles.containsKey(property)) {
+                        targetElement.styles.put(property, sourceElement.styles.get(property));
+                    }
+                }
+            }
+            
+            result.put("success", true);
+            result.put("message", "تم نسخ الخصائص بنجاح");
+            
+            // Save and re-render
+            saveProjectInBackground();
+            scheduleCanvasRender();
+            
+            return result.toString();
+        } catch (Exception e) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "Error copying properties: " + e.getMessage());
+            JSONObject result = new JSONObject();
+            try {
+                result.put("success", false);
+                result.put("message", "خطأ في نسخ الخصائص: " + e.getMessage());
+            } catch (JSONException e1) {
+                return "{\"success\": false, \"message\": \"خطأ في العملية\"}";
+            }
+            return result.toString();
+        }
+    }
+    
+    /**
+     * تصدير خصائص العنصر
+     */
+    public String exportProperties(String elementId, boolean includeSystemProperties) {
+        try {
+            BlocElement element = findElementById(elementTree, elementId);
+            if (element == null) {
+                return "{}";
+            }
+            
+            JSONObject export = new JSONObject();
+            export.put("id", element.attributes.get("id"));
+            export.put("class", element.attributes.get("class"));
+            export.put("tag", element.tag);
+            export.put("textContent", element.textContent);
+            
+            // Add styles
+            JSONObject styles = new JSONObject();
+            for (Map.Entry<String, String> entry : element.styles.entrySet()) {
+                if (includeSystemProperties || !entry.getKey().startsWith("system-")) {
+                    styles.put(entry.getKey(), entry.getValue());
+                }
+            }
+            export.put("styles", styles);
+            
+            // Add selected attributes
+            JSONObject attributes = new JSONObject();
+            for (Map.Entry<String, String> entry : element.attributes.entrySet()) {
+                if (includeSystemProperties || !entry.getKey().startsWith("system-")) {
+                    attributes.put(entry.getKey(), entry.getValue());
+                }
+            }
+            export.put("attributes", attributes);
+            
+            return export.toString();
+        } catch (Exception e) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "Error exporting properties: " + e.getMessage());
+            return "{}";
+        }
+    }
+    
+    /**
+     * استيراد خصائص للعنصر
+     */
+    public String importProperties(String elementId, String propertiesJson) {
+        try {
+            JSONObject result = new JSONObject();
+            result.put("success", false);
+            
+            BlocElement element = findElementById(elementTree, elementId);
+            if (element == null) {
+                result.put("message", "العنصر غير موجود");
+                return result.toString();
+            }
+            
+            JSONObject importData = new JSONObject(propertiesJson);
+            
+            // Import styles
+            if (importData.has("styles")) {
+                JSONObject styles = importData.getJSONObject("styles");
+                Iterator<String> keys = styles.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    element.styles.put(key, styles.getString(key));
+                }
+            }
+            
+            // Import attributes
+            if (importData.has("attributes")) {
+                JSONObject attributes = importData.getJSONObject("attributes");
+                Iterator<String> keys = attributes.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    element.attributes.put(key, attributes.getString(key));
+                }
+            }
+            
+            result.put("success", true);
+            result.put("message", "تم استيراد الخصائص بنجاح");
+            
+            // Save and re-render
+            saveProjectInBackground();
+            scheduleCanvasRender();
+            
+            return result.toString();
+        } catch (Exception e) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "Error importing properties: " + e.getMessage());
+            JSONObject result = new JSONObject();
+            try {
+                result.put("success", false);
+                result.put("message", "خطأ في استيراد الخصائص: " + e.getMessage());
+            } catch (JSONException e1) {
+                return "{\"success\": false, \"message\": \"خطأ في العملية\"}";
+            }
+            return result.toString();
+        }
     }
     
     /**
@@ -1866,17 +2242,5 @@ public class EditorActivity extends AppCompatActivity {
      */
     public BottomSheetDragManager getBottomSheetDragManager() {
         return bottomSheetDragManager;
-    }
-
-    /**
-     * تنظيف BottomSheetDragManager عند الإنهاء
-     */
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        
-        if (bottomSheetDragManager != null) {
-            bottomSheetDragManager.onDestroy();
-        }
     }
 }

@@ -458,6 +458,135 @@ public class BottomSheetDragManager {
     }
     
     /**
+     * إنشاء bitmap للمعاينة
+     */
+    private Bitmap createSnapshotBitmap(String elementType) {
+        int width = 150;
+        int height = 80;
+        
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        
+        Paint paint = new Paint();
+        paint.setColor(getElementColor(elementType));
+        paint.setStyle(Paint.Style.FILL);
+        paint.setAlpha(120);
+        
+        // رسم شكل للعنصر حسب النوع
+        if (elementType.toLowerCase().equals("button")) {
+            // button shape
+            Paint paint2 = new Paint(paint);
+            paint2.setStyle(Paint.Style.STROKE);
+            paint2.setStrokeWidth(2);
+            paint2.setColor(Color.DKGRAY);
+            canvas.drawRoundRect(10, 10, width-10, height-10, 15, 15, paint);
+            canvas.drawRoundRect(10, 10, width-10, height-10, 15, 15, paint2);
+        } else if (elementType.toLowerCase().equals("image")) {
+            // image shape
+            canvas.drawRect(5, 5, width-5, height-5, paint);
+            paint.setColor(Color.WHITE);
+            paint.setTextSize(12);
+            paint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("IMG", width/2, height/2 + 5, paint);
+        } else {
+            // default shape
+            canvas.drawRect(0, 0, width, height, paint);
+        }
+        
+        // إضافة نص
+        paint.setColor(Color.WHITE);
+        paint.setTextSize(14);
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setTypeface(Typeface.DEFAULT);
+        
+        Paint.FontMetrics fontMetrics = paint.getFontMetrics();
+        float textY = height - 15 - (fontMetrics.ascent + fontMetrics.descent) / 2;
+        canvas.drawText(elementType, width / 2, textY, paint);
+        
+        return bitmap;
+    }
+    
+    /**
+     * عرض معاينة outline
+     */
+    private void showOutlinePreview(String elementType, Point position) {
+        // إنشاء outline element مؤقت
+        try {
+            int width = 100;
+            int height = 50;
+            
+            Bitmap outlineBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(outlineBitmap);
+            
+            Paint paint = new Paint();
+            paint.setColor(getElementColor(elementType));
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(3);
+            paint.setAlpha(255);
+            
+            // رسم outline
+            canvas.drawRect(0, 0, width, height, paint);
+            
+            // رسم نقطة في المركز
+            paint.setStyle(Paint.Style.FILL);
+            paint.setAlpha(180);
+            canvas.drawCircle(width/2, height/2, 8, paint);
+            
+            // عرض المؤقت في ghostView
+            ghostView.setImageBitmap(outlineBitmap);
+            ghostView.setX(position.x - width / 2);
+            ghostView.setY(position.y - height / 2);
+            ghostView.setVisibility(View.VISIBLE);
+            
+            Log.d(TAG, "Outline preview shown for: " + elementType);
+        } catch (Exception e) {
+            Log.e(TAG, "Error in showOutlinePreview: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * عرض معاينة highlight
+     */
+    private void showHighlightPreview(String elementType, Point position) {
+        // إنشاء highlight element مؤقت
+        try {
+            int width = 120;
+            int height = 60;
+            
+            Bitmap highlightBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(highlightBitmap);
+            
+            Paint paint = new Paint();
+            int highlightColor = getElementColor(elementType);
+            
+            // إنشاء gradient for highlight effect
+            paint.setStyle(Paint.Style.FILL);
+            paint.setAlpha(150);
+            paint.setColor(highlightColor);
+            
+            // رسم circle highlight
+            canvas.drawCircle(width/2, height/2, Math.min(width, height)/3, paint);
+            
+            // إضافة glow effect
+            Paint glowPaint = new Paint(paint);
+            glowPaint.setAlpha(80);
+            canvas.drawCircle(width/2, height/2, Math.min(width, height)/2, glowPaint);
+            
+            // عرض المؤقت
+            snapshotView.setImageBitmap(highlightBitmap);
+            snapshotView.setX(position.x - width / 2);
+            snapshotView.setY(position.y - height / 2);
+            snapshotView.setScaleX(config.previewScale);
+            snapshotView.setScaleY(config.previewScale);
+            snapshotView.setVisibility(View.VISIBLE);
+            
+            Log.d(TAG, "Highlight preview shown for: " + elementType);
+        } catch (Exception e) {
+            Log.e(TAG, "Error in showHighlightPreview: " + e.getMessage());
+        }
+    }
+    
+    /**
      * كشف Drop Zones
      */
     private void detectDropZones() {
