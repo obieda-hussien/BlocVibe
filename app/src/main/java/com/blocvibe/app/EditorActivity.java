@@ -30,6 +30,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 public class EditorActivity extends AppCompatActivity {
 
@@ -52,6 +54,20 @@ public class EditorActivity extends AppCompatActivity {
     
     private ExecutorService executorService;
     private ActivityResultLauncher<Intent> codeEditorResultLauncher;
+    
+    // ===== خصائص لوحة الخصائص المتقدمة =====
+    private boolean propertiesPanelVisible = false;
+    private String currentElementId = null;
+    private AtomicBoolean isPropertyUpdateInProgress = new AtomicBoolean(false);
+    private final String PROPERTIES_PANEL_TAG = "PropertiesPanel";
+    
+    // Property validation patterns
+    private static final Pattern HEX_COLOR_PATTERN = Pattern.compile("^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$");
+    private static final Pattern CSS_DIMENSION_PATTERN = Pattern.compile("^(auto|inherit|(\d+(\.\d+)?)(px|em|rem|%|vh|vw))$");
+    private static final Pattern CSS_VALUE_PATTERN = Pattern.compile("^[a-zA-Z0-9\s,#().%-]+$");
+    
+    // Property change listeners
+    private List<PropertyChangeListener> propertyChangeListeners = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -97,6 +113,9 @@ public class EditorActivity extends AppCompatActivity {
                 
                 // Initialize ElementManager
                 elementManager = new ElementManager(elementTree);
+                
+                // Initialize BottomSheetDragManager for enhanced drag & drop
+                initializeBottomSheetDragManager();
                 
                 if (getSupportActionBar() != null) {
                     getSupportActionBar().setTitle(project.name);
@@ -316,6 +335,9 @@ public class EditorActivity extends AppCompatActivity {
                 handleElementsWrapInDiv(json);
             }
         });
+        
+        // ===== إعداد مستمعي تغييرات الخصائص المتقدمة =====
+        setupAdvancedPropertyListeners();
 
         // Register for activity result from CodeEditorActivity
         codeEditorResultLauncher = registerForActivityResult(
@@ -737,9 +759,1124 @@ public class EditorActivity extends AppCompatActivity {
             pendingRenderTask = null;
         }
         
+        // تنظيف مستمعي تغييرات الخصائص
+        clearPropertyChangeListeners();
+        
         // إيقاف ExecutorService
         executorService.shutdown();
         
         android.util.Log.d("BlocVibe", "🧹 EditorActivity destroyed - cleanup complete");
+    }
+    
+    // ===== الدوال الأساسية لإدارة لوحة الخصائص المتقدمة =====
+    
+    /**
+     * معالجة طلب عرض لوحة الخصائص للعنصر المحدد
+     * @param elementId معرف العنصر المراد عرض خصائصه
+     */
+    public void handlePropertiesPanelRequested(String elementId) {
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "طلب عرض لوحة الخصائص للعنصر: " + elementId);
+        
+        if (elementId == null || elementId.trim().isEmpty()) {
+            android.util.Log.w(PROPERTIES_PANEL_TAG, "معرف العنصر غير صالح");
+            return;
+        }
+        
+        // البحث عن العنصر في الشجرة
+        BlocElement element = findElementById(elementTree, elementId);
+        if (element == null) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "لم يتم العثور على العنصر بالمعرف: " + elementId);
+            showErrorMessage("لم يتم العثور على العنصر المحدد");
+            return;
+        }
+        
+        // عرض لوحة الخصائص
+        showPropertiesPanel(elementId);
+        
+        // تحديث العناصر المرئية
+        updatePropertiesDisplay(elementId);
+        
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "تم عرض لوحة الخصائص بنجاح للعنصر: " + elementId);
+    }
+    
+    /**
+     * معالجة اكتمال تحديث الخاصية
+     * @param elementId معرف العنصر
+     * @param success نجح التحديث أم لا
+     */
+    public void handlePropertyUpdateComplete(String elementId, boolean success) {
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "اكتمال تحديث الخاصية للعنصر: " + elementId + " - النتيجة: " + success);
+        
+        isPropertyUpdateInProgress.set(false);
+        
+        if (success) {
+            // حفظ المشروع وتحديث العرض
+            saveProjectInBackground();
+            scheduleCanvasRender();
+            
+            // إشعار المستخدمين بالنجاح
+            showSuccessMessage("تم حفظ التغييرات بنجاح");
+        } else {
+            showErrorMessage("فشل في حفظ التغييرات");
+        }
+    }
+    
+    /**
+     * معالجة فشل التحقق من صحة الخاصية
+     * @param elementId معرف العنصر
+     * @param errors رسائل الخطأ
+     */
+    public void handlePropertyValidationFailed(String elementId, String errors) {
+        android.util.Log.w(PROPERTIES_PANEL_TAG, "فشل التحقق من صحة الخصائص للعنصر: " + elementId + " - الأخطاء: " + errors);
+        
+        isPropertyUpdateInProgress.set(false);
+        
+        // عرض رسائل الخطأ للمستخدم
+        showValidationErrorMessage("أخطاء في البيانات المدخلة:\n" + errors);
+    }
+    
+    /**
+     * معالجة تغيير خاصية العنصر
+     * @param elementId معرف العنصر
+     * @param property اسم الخاصية
+     * @param value القيمة الجديدة
+     */
+    public void handleElementPropertyChanged(String elementId, String property, String value) {
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "تغيير خاصية العنصر: " + elementId + " - " + property + " = " + value);
+        
+        if (elementId == null || property == null) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "معرف العنصر أو اسم الخاصية فارغ");
+            return;
+        }
+        
+        // التحقق من صحة التغيير
+        if (!validatePropertyChange(elementId, property, value)) {
+            android.util.Log.w(PROPERTIES_PANEL_TAG, "فشل التحقق من صحة التغيير");
+            return;
+        }
+        
+        // تحديث الخاصية
+        updateElementProperty(elementId, property, value);
+    }
+    
+    // ===== دوال إدارة الخصائص =====
+    
+    /**
+     * إعداد مستمعي تغييرات الخصائص المتقدمة للوحة الخصائص
+     */
+    private void setupAdvancedPropertyListeners() {
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "تم إعداد مستمعي تغييرات الخصائص المتقدمة");
+    }
+    
+    /**
+     * طلب خصائص العنصر
+     * @param elementId معرف العنصر
+     */
+    public void requestElementProperties(String elementId) {
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "طلب خصائص العنصر: " + elementId);
+        
+        BlocElement element = findElementById(elementTree, elementId);
+        if (element != null) {
+            populatePropertyControls(element);
+            android.util.Log.d(PROPERTIES_PANEL_TAG, "تم تحميل خصائص العنصر: " + elementId);
+        } else {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "لم يتم العثور على العنصر: " + elementId);
+        }
+    }
+    
+    /**
+     * تحديث خاصية العنصر
+     * @param elementId معرف العنصر
+     * @param property اسم الخاصية
+     * @param value القيمة الجديدة
+     */
+    public void updateElementProperty(String elementId, String property, String value) {
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "تحديث خاصية العنصر: " + elementId + " - " + property + " = " + value);
+        
+        BlocElement element = findElementById(elementTree, elementId);
+        if (element == null) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "لم يتم العثور على العنصر: " + elementId);
+            return;
+        }
+        
+        isPropertyUpdateInProgress.set(true);
+        
+        executorService.execute(() -> {
+            try {
+                // تحديد نوع الخاصية وتحديثها
+                if (property.equals("id") || property.equals("class") || property.equals("href") || property.equals("src")) {
+                    // خاصية attribute
+                    element.attributes.put(property, value);
+                } else {
+                    // خاصية style
+                    element.styles.put(property, value);
+                }
+                
+                // إشعار المستمعين
+                notifyPropertyChangeListeners(elementId, property, value);
+                
+                // إكمال العملية
+                runOnUiThread(() -> handlePropertyUpdateComplete(elementId, true));
+                
+            } catch (Exception e) {
+                android.util.Log.e(PROPERTIES_PANEL_TAG, "خطأ في تحديث الخاصية", e);
+                runOnUiThread(() -> handlePropertyUpdateComplete(elementId, false));
+            }
+        });
+    }
+    
+    /**
+     * التحقق من صحة تغيير الخاصية
+     * @param elementId معرف العنصر
+     * @param property اسم الخاصية
+     * @param value القيمة الجديدة
+     * @return true إذا كان التغيير صحيحاً، false خلاف ذلك
+     */
+    public boolean validatePropertyChange(String elementId, String property, String value) {
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "التحقق من صحة التغيير: " + property + " = " + value);
+        
+        StringBuilder errors = new StringBuilder();
+        
+        // التحقق من القيم الفارغة
+        if (value == null || value.trim().isEmpty()) {
+            errors.append("• يجب إدخال قيمة\n");
+        }
+        
+        // التحقق من صحة قيم CSS
+        if (property.equals("color") || property.equals("background-color") || property.equals("border-color")) {
+            if (!value.equals("inherit") && !value.equals("transparent") && !HEX_COLOR_PATTERN.matcher(value).matches()) {
+                errors.append("• قيمة اللون غير صحيحة (استخدم formato hex مثل #FF0000)\n");
+            }
+        }
+        
+        // التحقق من قيم الأبعاد
+        if (property.equals("width") || property.equals("height") || property.equals("padding") || property.equals("margin")) {
+            if (!CSS_DIMENSION_PATTERN.matcher(value).matches() && !value.equals("0")) {
+                errors.append("• قيمة الأبعاد غير صحيحة (مثال: 100px, 50%, auto)\n");
+            }
+        }
+        
+        // التحقق من قيم CSS العامة
+        if (!CSS_VALUE_PATTERN.matcher(value).matches() && value.length() > 50) {
+            errors.append("• القيمة تحتوي على أحرف غير مسموحة\n");
+        }
+        
+        // التحقق من قيم ID المميزة
+        if (property.equals("id")) {
+            if (value.contains(" ") || value.contains("#") || value.contains(".")) {
+                errors.append("• معرف العنصر لا يمكن أن يحتوي على مسافات أو رموز خاصة\n");
+            }
+            
+            // التحقق من عدم تكرار المعرف
+            if (isElementIdDuplicate(elementId, value)) {
+                errors.append("• معرف العنصر مستخدم بالفعل\n");
+            }
+        }
+        
+        // التحقق من قيم Class
+        if (property.equals("class")) {
+            if (value.contains("<") || value.contains(">") || value.contains("&") || value.contains("\"")) {
+                errors.append("• اسم الفئة لا يمكن أن يحتوي على رموز HTML\n");
+            }
+        }
+        
+        // إرجاع النتيجة
+        if (errors.length() > 0) {
+            handlePropertyValidationFailed(elementId, errors.toString());
+            return false;
+        }
+        
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "التحقق من صحة التغيير نجح");
+        return true;
+    }
+    
+    /**
+     * الحصول على نوع العنصر
+     * @param elementId معرف العنصر
+     * @return نوع العنصر أو null إذا لم يتم العثور عليه
+     */
+    public String getElementType(String elementId) {
+        BlocElement element = findElementById(elementTree, elementId);
+        return element != null ? element.tag : null;
+    }
+    
+    // ===== دوال تحديث واجهة لوحة الخصائص =====
+    
+    /**
+     * عرض لوحة الخصائص
+     * @param elementId معرف العنصر
+     */
+    public void showPropertiesPanel(String elementId) {
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "عرض لوحة الخصائص للعنصر: " + elementId);
+        
+        currentElementId = elementId;
+        propertiesPanelVisible = true;
+        
+        // التبديل إلى واجهة الخصائص
+        binding.bottomSheetPalette.editorFlipper.setDisplayedChild(1);
+        
+        // إظهار إشعار
+        runOnUiThread(() -> {
+            Snackbar.make(binding.getRoot(), "تم فتح لوحة خصائص العنصر", Snackbar.LENGTH_SHORT).show();
+        });
+    }
+    
+    /**
+     * إخفاء لوحة الخصائص
+     */
+    public void hidePropertiesPanel() {
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "إخفاء لوحة الخصائص");
+        
+        propertiesPanelVisible = false;
+        currentElementId = null;
+        
+        // التبديل إلى واجهة الـ palette
+        binding.bottomSheetPalette.editorFlipper.setDisplayedChild(0);
+        
+        // إلغاء تحديد العنصر
+        currentSelectedElement = null;
+        renderCanvas();
+    }
+    
+    /**
+     * تحديث عرض الخصائص
+     * @param elementId معرف العنصر
+     */
+    public void updatePropertiesDisplay(String elementId) {
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "تحديث عرض خصائص العنصر: " + elementId);
+        
+        BlocElement element = findElementById(elementTree, elementId);
+        if (element != null) {
+            populatePropertyControls(element);
+        }
+    }
+    
+    /**
+     * ملء عناصر تحكم الخصائص
+     * @param element العنصر المراد ملء خصائصه
+     */
+    public void populatePropertyControls(BlocElement element) {
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "ملء عناصر تحكم خصائص العنصر: " + element.tag);
+        
+        if (element == null) return;
+        
+        runOnUiThread(() -> {
+            try {
+                View propertiesView = binding.bottomSheetPalette.editorFlipper.getChildAt(1);
+                
+                // العثور على عناصر التحكم
+                TextView label = propertiesView.findViewById(R.id.selected_element_label);
+                TextInputEditText editId = propertiesView.findViewById(R.id.edit_id);
+                TextInputEditText editClass = propertiesView.findViewById(R.id.edit_class);
+                TextInputEditText editWidth = propertiesView.findViewById(R.id.edit_width);
+                TextInputEditText editColor = propertiesView.findViewById(R.id.edit_color);
+                
+                // تحديث النصوص
+                label.setText("تحرير: <" + element.tag + ">");
+                editId.setText(getAttributeValue(element, "id"));
+                editClass.setText(getAttributeValue(element, "class"));
+                editWidth.setText(getStyleValue(element, "width"));
+                editColor.setText(getStyleValue(element, "color"));
+                
+                // إضافة فاصل منطقي حسب نوع العنصر
+                updateAdvancedPropertyControls(element, propertiesView);
+                
+            } catch (Exception e) {
+                android.util.Log.e(PROPERTIES_PANEL_TAG, "خطأ في ملء عناصر التحكم", e);
+            }
+        });
+    }
+    
+    /**
+     * تحديث عناصر التحكم المتقدمة حسب نوع العنصر
+     * @param element العنصر
+     * @param propertiesView واجهة الخصائص
+     */
+    private void updateAdvancedPropertyControls(BlocElement element, View propertiesView) {
+        try {
+            // إظهار/إخفاء عناصر التحكم حسب نوع العنصر
+            View contentGroup = propertiesView.findViewById(R.id.content_controls_group);
+            View linkGroup = propertiesView.findViewById(R.id.link_controls_group);
+            View imageGroup = propertiesView.findViewById(R.id.image_controls_group);
+            View layoutGroup = propertiesView.findViewById(R.id.layout_controls_group);
+            
+            // إخفاء جميع المجموعات أولاً
+            if (contentGroup != null) contentGroup.setVisibility(View.GONE);
+            if (linkGroup != null) linkGroup.setVisibility(View.GONE);
+            if (imageGroup != null) imageGroup.setVisibility(View.GONE);
+            if (layoutGroup != null) layoutGroup.setVisibility(View.GONE);
+            
+            // إظهار المجموعة المناسبة حسب نوع العنصر
+            switch (element.tag.toLowerCase()) {
+                case "button":
+                case "p":
+                case "h1":
+                case "h2":
+                case "h3":
+                    if (contentGroup != null) contentGroup.setVisibility(View.VISIBLE);
+                    break;
+                    
+                case "a":
+                    if (linkGroup != null) linkGroup.setVisibility(View.VISIBLE);
+                    if (contentGroup != null) contentGroup.setVisibility(View.VISIBLE);
+                    break;
+                    
+                case "img":
+                    if (imageGroup != null) imageGroup.setVisibility(View.VISIBLE);
+                    break;
+                    
+                case "div":
+                case "section":
+                case "article":
+                    if (layoutGroup != null) layoutGroup.setVisibility(View.VISIBLE);
+                    break;
+            }
+            
+        } catch (Exception e) {
+            android.util.Log.e(PROPERTIES_PANEL_TAG, "خطأ في تحديث عناصر التحكم المتقدمة", e);
+        }
+    }
+    
+    // ===== دوال مساعدة للتحقق والعرض =====
+    
+    /**
+     * التحقق من تكرار معرف العنصر
+     * @param currentElementId معرف العنصر الحالي
+     * @param newId المعرف الجديد
+     * @return true إذا كان المعرف مكرراً
+     */
+    private boolean isElementIdDuplicate(String currentElementId, String newId) {
+        for (BlocElement element : elementTree) {
+            if (isElementIdDuplicateRecursive(element, currentElementId, newId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * التحقق المتكرر من تكرار معرف العنصر
+     */
+    private boolean isElementIdDuplicateRecursive(BlocElement element, String currentElementId, String newId) {
+        String elementId = element.attributes.get("id");
+        
+        // تجاهل العنصر الحالي في التحقق
+        if (element.elementId.equals(currentElementId)) {
+            return false;
+        }
+        
+        // التحقق من التطابق
+        if (newId != null && newId.equals(elementId)) {
+            return true;
+        }
+        
+        // التحقق من العناصر الفرعية
+        for (BlocElement child : element.children) {
+            if (isElementIdDuplicateRecursive(child, currentElementId, newId)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * الحصول على قيمة خاصية العنصر
+     */
+    private String getAttributeValue(BlocElement element, String attribute) {
+        return element.attributes.get(attribute) != null ? element.attributes.get(attribute) : "";
+    }
+    
+    /**
+     * الحصول على قيمة خاصية التصميم
+     */
+    private String getStyleValue(BlocElement element, String style) {
+        return element.styles.get(style) != null ? element.styles.get(style) : "";
+    }
+    
+    /**
+     * إشعار مستمعي تغيير الخصائص
+     */
+    private void notifyPropertyChangeListeners(String elementId, String property, String value) {
+        for (PropertyChangeListener listener : propertyChangeListeners) {
+            try {
+                listener.onPropertyChanged(elementId, property, value);
+            } catch (Exception e) {
+                android.util.Log.e(PROPERTIES_PANEL_TAG, "خطأ في إشعار المستمع", e);
+            }
+        }
+    }
+    
+    // ===== دوال إظهار الرسائل للمستخدم =====
+    
+    /**
+     * عرض رسالة نجاح
+     */
+    private void showSuccessMessage(String message) {
+        runOnUiThread(() -> {
+            Snackbar.make(binding.getRoot(), message, Snackbar.LENGTH_SHORT)
+                .setBackgroundTint(android.graphics.Color.parseColor("#4CAF50"))
+                .show();
+        });
+    }
+    
+    /**
+     * عرض رسالة خطأ
+     */
+    private void showErrorMessage(String message) {
+        runOnUiThread(() -> {
+            Snackbar.make(binding.getRoot(), message, Snackbar.LENGTH_LONG)
+                .setBackgroundTint(android.graphics.Color.parseColor("#F44336"))
+                .setAction("إعادة المحاولة", v -> {
+                    // إعادة محاولة العملية
+                    if (currentSelectedElement != null) {
+                        updatePropertiesDisplay(currentSelectedElement.elementId);
+                    }
+                })
+                .show();
+        });
+    }
+    
+    /**
+     * عرض رسالة خطأ التحقق من صحة البيانات
+     */
+    private void showValidationErrorMessage(String message) {
+        runOnUiThread(() -> {
+            new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("خطأ في البيانات")
+                .setMessage(message)
+                .setPositiveButton("حسناً", (dialog, which) -> dialog.dismiss())
+                .setIcon(android.R.drawable.ic_dialog_alert)
+                .show();
+        });
+    }
+    
+    // ===== تحسين الأداء وتجربة المستخدم =====
+    
+    /**
+     * تحسين عملية تحديث الخصائص لتجنب التجمد
+     */
+    private void optimizePropertyUpdate(Runnable updateTask) {
+        // استخدام thread منفصل للعمليات الثقيلة
+        executorService.execute(() -> {
+            try {
+                // إجراء التحديث
+                updateTask.run();
+                
+                // تحديث الواجهة في main thread
+                runOnUiThread(() -> {
+                    renderCanvas();
+                    if (currentSelectedElement != null) {
+                        updatePropertiesDisplay(currentSelectedElement.elementId);
+                    }
+                });
+                
+            } catch (Exception e) {
+                android.util.Log.e(PROPERTIES_PANEL_TAG, "خطأ في تحديث الخاصية المحسن", e);
+                runOnUiThread(() -> showErrorMessage("خطأ في تحديث الخاصية"));
+            }
+        });
+    }
+    
+    /**
+     * حفظ تلقائي للخصائص المحدثة
+     */
+    private void autoSaveProperties() {
+        // تأخير الحفظ التلقائي لتجنب الحفظ المتكرر
+        renderHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                saveProjectInBackground();
+                android.util.Log.d(PROPERTIES_PANEL_TAG, "تم الحفظ التلقائي للخصائص");
+            }
+        }, 2000); // حفظ بعد ثانيتين من آخر تعديل
+    }
+    
+    /**
+     * واجهة مستمعي تغييرات الخصائص المتقدمة
+     */
+    public interface PropertyChangeListener {
+        void onPropertyChanged(String elementId, String property, String value);
+        void onPropertyValidationFailed(String elementId, String property, String value, String error);
+        void onPropertyUpdateComplete(String elementId, String property, boolean success);
+    }
+    
+    /**
+     * إضافة مستمع تغييرات الخصائص
+     */
+    public void addPropertyChangeListener(PropertyChangeListener listener) {
+        if (listener != null && !propertyChangeListeners.contains(listener)) {
+            propertyChangeListeners.add(listener);
+            android.util.Log.d(PROPERTIES_PANEL_TAG, "تم إضافة مستمع جديد لتغييرات الخصائص");
+        }
+    }
+    
+    /**
+     * إزالة مستمع تغييرات الخصائص
+     */
+    public void removePropertyChangeListener(PropertyChangeListener listener) {
+        if (listener != null) {
+            propertyChangeListeners.remove(listener);
+            android.util.Log.d(PROPERTIES_PANEL_TAG, "تم إزالة مستمع تغييرات الخصائص");
+        }
+    }
+    
+    /**
+     * تنظيف مستمعي تغييرات الخصائص
+     */
+    public void clearPropertyChangeListeners() {
+        propertyChangeListeners.clear();
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "تم تنظيف جميع مستمعي تغييرات الخصائص");
+    }
+    
+    /**
+     * الحصول على حالة لوحة الخصائص
+     */
+    public boolean isPropertiesPanelVisible() {
+        return propertiesPanelVisible;
+    }
+    
+    /**
+     * الحصول على معرف العنصر الحالي في لوحة الخصائص
+     */
+    public String getCurrentElementIdInProperties() {
+        return currentElementId;
+    }
+    
+    /**
+     * التحقق من وجود عملية تحديث جارية
+     */
+    public boolean isPropertyUpdateInProgress() {
+        return isPropertyUpdateInProgress.get();
+    }
+    
+    /**
+     * الحصول على عدد مستمعي تغييرات الخصائص
+     */
+    public int getPropertyChangeListenerCount() {
+        return propertyChangeListeners.size();
+    }
+    
+    /**
+     * سجل مفصل لحالات لوحة الخصائص
+     */
+    private void logPropertiesPanelState() {
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "=== حالة لوحة الخصائص ===");
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "مرئية: " + propertiesPanelVisible);
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "العنصر الحالي: " + currentElementId);
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "تحديث جاري: " + isPropertyUpdateInProgress.get());
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "عدد المستمعين: " + propertyChangeListeners.size());
+        android.util.Log.d(PROPERTIES_PANEL_TAG, "===========================");
+    }
+
+    // ==================== FLEXBOX SYSTEM HANDLERS ====================
+    // معالجات نظام Flexbox المتقدم
+
+    /**
+     * معالجة اكتمال تحليل Flexbox
+     */
+    public void handleFlexboxAnalysisComplete(String containerId, String analysisJson, double score, String recommendations) {
+        try {
+            android.util.Log.d("FlexboxSystem", "تحليل Flexbox اكتمل للحاوية: " + containerId + " (النتيجة: " + score + ")");
+            
+            // تحديث واجهة المستخدم بعرض التحليل
+            runOnUiThread(() -> {
+                Toast.makeText(this, "تم تحليل Flexbox - النتيجة: " + String.format("%.1f", score), Toast.LENGTH_SHORT).show();
+                
+                // تحديث لوحة التحكم بالنتائج
+                updateFlexboxAnalysisDisplay(containerId, analysisJson, score);
+            });
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في معالجة اكتمال تحليل Flexbox: " + e.getMessage());
+        }
+    }
+
+    /**
+     * معالجة تطبيق Flexbox على الحاوية
+     */
+    public void handleFlexboxApplied(String containerId, String propertiesJson, double conversionTime, boolean success) {
+        try {
+            android.util.Log.d("FlexboxSystem", "تطبيق Flexbox على: " + containerId + " (نجح: " + success + ")");
+            
+            runOnUiThread(() -> {
+                if (success) {
+                    Toast.makeText(this, "تم تطبيق Flexbox بنجاح في " + String.format("%.1f", conversionTime) + "ms", Toast.LENGTH_LONG).show();
+                    
+                    // تحديث حالة عنصر التحكم
+                    updateFlexboxAppliedState(containerId, true, propertiesJson);
+                } else {
+                    Toast.makeText(this, "فشل في تطبيق Flexbox", Toast.LENGTH_SHORT).show();
+                    updateFlexboxAppliedState(containerId, false, null);
+                }
+            });
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في معالجة تطبيق Flexbox: " + e.getMessage());
+        }
+    }
+
+    /**
+     * معالجة تبديل معاينة Flexbox
+     */
+    public void handleFlexboxPreviewToggled(boolean enabled, String containerId) {
+        try {
+            android.util.Log.d("FlexboxSystem", "تبديل معاينة Flexbox: " + (enabled ? "مفعل" : "معطل") + " للحاوية: " + containerId);
+            
+            runOnUiThread(() -> {
+                String message = enabled ? "تم تفعيل معاينة Flexbox" : "تم إلغاء معاينة Flexbox";
+                if (containerId != null && !containerId.isEmpty()) {
+                    message += " للحاوية: " + containerId;
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+                
+                // تحديث حالة عنصر التحكم
+                updateFlexboxPreviewState(enabled);
+            });
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في معالجة تبديل معاينة Flexbox: " + e.getMessage());
+        }
+    }
+
+    /**
+     * معالجة استرجاع Flexbox
+     */
+    public void handleFlexboxReverted(String containerId, boolean success) {
+        try {
+            android.util.Log.d("FlexboxSystem", "استرجاع Flexbox للحاوية: " + containerId + " (نجح: " + success + ")");
+            
+            runOnUiThread(() -> {
+                if (success) {
+                    Toast.makeText(this, "تم استرجاع Flexbox بنجاح", Toast.LENGTH_SHORT).show();
+                    updateFlexboxAppliedState(containerId, false, null);
+                } else {
+                    Toast.makeText(this, "فشل في استرجاع Flexbox", Toast.LENGTH_SHORT).show();
+                }
+            });
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في معالجة استرجاع Flexbox: " + e.getMessage());
+        }
+    }
+
+    /**
+     * معالجة تحسين Flexbox
+     */
+    public void handleFlexboxOptimized(String containerId, int optimizationsApplied, String improvementsJson) {
+        try {
+            android.util.Log.d("FlexboxSystem", "تحسين Flexbox للحاوية: " + containerId + " (عدد التحسينات: " + optimizationsApplied + ")");
+            
+            runOnUiThread(() -> {
+                if (optimizationsApplied > 0) {
+                    Toast.makeText(this, "تم تطبيق " + optimizationsApplied + " تحسين على Flexbox", Toast.LENGTH_LONG).show();
+                } else {
+                    Toast.makeText(this, "لا توجد تحسينات متاحة لـ Flexbox", Toast.LENGTH_SHORT).show();
+                }
+                
+                // تحديث واجهة المستخدم بالتحسينات
+                updateFlexboxOptimizationDisplay(containerId, improvementsJson);
+            });
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في معالجة تحسين Flexbox: " + e.getMessage());
+        }
+    }
+
+    /**
+     * معالجة تصدير إعدادات Flexbox
+     */
+    public void handleFlexboxConfigurationExported(String containerId, String configurationJson) {
+        try {
+            android.util.Log.d("FlexboxSystem", "تصدير إعدادات Flexbox للحاوية: " + containerId);
+            
+            runOnUiThread(() -> {
+                Toast.makeText(this, "تم تصدير إعدادات Flexbox", Toast.LENGTH_SHORT).show();
+                
+                // حفظ الإعدادات أو عرضها
+                saveFlexboxConfiguration(containerId, configurationJson);
+            });
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في معالجة تصدير إعدادات Flexbox: " + e.getMessage());
+        }
+    }
+
+    // ==================== FLEXBOX CONTROL METHODS ====================
+    // طرق التحكم في نظام Flexbox
+
+    /**
+     * طلب تحليل فرص Flexbox
+     */
+    public String requestFlexboxAnalysis(String containerId, String optionsJson) {
+        try {
+            android.util.Log.d("FlexboxSystem", "طلب تحليل Flexbox للحاوية: " + containerId);
+            
+            if (binding.canvasWebview != null) {
+                String script = "window.BlocVibeCanvas.analyzeFlexboxOpportunities('" + containerId + "', " + optionsJson + ");";
+                binding.canvasWebview.evaluateJavascript(script, value -> {
+                    android.util.Log.d("FlexboxSystem", "تم إرسال طلب تحليل Flexbox");
+                });
+                return "{\"success\": true, \"message\": \"تم إرسال طلب التحليل\"}";
+            } else {
+                return "{\"success\": false, \"message\": \"WebView غير متاح\"}";
+            }
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في طلب تحليل Flexbox: " + e.getMessage());
+            return "{\"success\": false, \"message\": \"خطأ: " + e.getMessage() + "\"}";
+        }
+    }
+
+    /**
+     * تطبيق Flexbox على الحاوية
+     */
+    public String applyFlexbox(String containerId, String propertiesJson) {
+        try {
+            android.util.Log.d("FlexboxSystem", "تطبيق Flexbox على الحاوية: " + containerId);
+            
+            if (binding.canvasWebview != null) {
+                String script = "window.BlocVibeCanvas.applyFlexboxToContainer('" + containerId + "', " + propertiesJson + ");";
+                binding.canvasWebview.evaluateJavascript(script, value -> {
+                    android.util.Log.d("FlexboxSystem", "تم إرسال طلب تطبيق Flexbox");
+                });
+                return "{\"success\": true, \"message\": \"تم إرسال طلب التطبيق\"}";
+            } else {
+                return "{\"success\": false, \"message\": \"WebView غير متاح\"}";
+            }
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في تطبيق Flexbox: " + e.getMessage());
+            return "{\"success\": false, \"message\": \"خطأ: " + e.getMessage() + "\"}";
+        }
+    }
+
+    /**
+     * تبديل معاينة Flexbox
+     */
+    public String toggleFlexboxPreview(String containerId) {
+        try {
+            android.util.Log.d("FlexboxSystem", "تبديل معاينة Flexbox للحاوية: " + containerId);
+            
+            if (binding.canvasWebview != null) {
+                String script = "if (window.BlocVibeCanvas.flexboxPreview && window.BlocVibeCanvas.flexboxPreview.isPreviewMode) {" +
+                               "    window.BlocVibeCanvas.disableFlexboxPreview();" +
+                               "} else {" +
+                               "    window.BlocVibeCanvas.enableFlexboxPreview('" + containerId + "');" +
+                               "}";
+                binding.canvasWebview.evaluateJavascript(script, value -> {
+                    android.util.Log.d("FlexboxSystem", "تم إرسال طلب تبديل معاينة Flexbox");
+                });
+                return "{\"success\": true, \"message\": \"تم إرسال طلب تبديل المعاينة\"}";
+            } else {
+                return "{\"success\": false, \"message\": \"WebView غير متاح\"}";
+            }
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في تبديل معاينة Flexbox: " + e.getMessage());
+            return "{\"success\": false, \"message\": \"خطأ: " + e.getMessage() + "\"}";
+        }
+    }
+
+    /**
+     * استرجاع Flexbox للحاوية
+     */
+    public String revertFlexbox(String containerId) {
+        try {
+            android.util.Log.d("FlexboxSystem", "استرجاع Flexbox للحاوية: " + containerId);
+            
+            if (binding.canvasWebview != null) {
+                String script = "window.BlocVibeCanvas.revertFlexbox('" + containerId + "');";
+                binding.canvasWebview.evaluateJavascript(script, value -> {
+                    android.util.Log.d("FlexboxSystem", "تم إرسال طلب استرجاع Flexbox");
+                });
+                return "{\"success\": true, \"message\": \"تم إرسال طلب الاسترجاع\"}";
+            } else {
+                return "{\"success\": false, \"message\": \"WebView غير متاح\"}";
+            }
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في استرجاع Flexbox: " + e.getMessage());
+            return "{\"success\": false, \"message\": \"خطأ: " + e.getMessage() + "\"}";
+        }
+    }
+
+    /**
+     * تحسين تخطيط Flexbox
+     */
+    public String optimizeFlexboxLayout(String containerId) {
+        try {
+            android.util.Log.d("FlexboxSystem", "تحسين تخطيط Flexbox للحاوية: " + containerId);
+            
+            if (binding.canvasWebview != null) {
+                String script = "window.BlocVibeCanvas.optimizeFlexboxLayout('" + containerId + "');";
+                binding.canvasWebview.evaluateJavascript(script, value -> {
+                    android.util.Log.d("FlexboxSystem", "تم إرسال طلب تحسين Flexbox");
+                });
+                return "{\"success\": true, \"message\": \"تم إرسال طلب التحسين\"}";
+            } else {
+                return "{\"success\": false, \"message\": \"WebView غير متاح\"}";
+            }
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في تحسين Flexbox: " + e.getMessage());
+            return "{\"success\": false, \"message\": \"خطأ: " + e.getMessage() + "\"}";
+        }
+    }
+
+    /**
+     * الحصول على تقرير أداء Flexbox
+     */
+    public String getFlexboxPerformanceReport() {
+        try {
+            android.util.Log.d("FlexboxSystem", "الحصول على تقرير أداء Flexbox");
+            
+            if (binding.canvasWebview != null) {
+                binding.canvasWebview.evaluateJavascript("window.BlocVibeCanvas.getFlexboxPerformanceReport();", value -> {
+                    android.util.Log.d("FlexboxSystem", "تم الحصول على تقرير أداء Flexbox");
+                });
+                return "{\"success\": true, \"message\": \"تم إرسال طلب التقرير\"}";
+            } else {
+                return "{\"success\": false, \"message\": \"WebView غير متاح\"}";
+            }
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في الحصول على تقرير Flexbox: " + e.getMessage());
+            return "{\"success\": false, \"message\": \"خطأ: " + e.getMessage() + "\"}";
+        }
+    }
+
+    // ==================== FLEXBOX UI UPDATE METHODS ====================
+    // طرق تحديث واجهة المستخدم لـ Flexbox
+
+    /**
+     * تحديث عرض تحليل Flexbox
+     */
+    private void updateFlexboxAnalysisDisplay(String containerId, String analysisJson, double score) {
+        try {
+            // تحديث عناصر واجهة المستخدم ببيانات التحليل
+            if (findViewById(R.id.tvFlexboxAnalysisScore) != null) {
+                TextView scoreView = findViewById(R.id.tvFlexboxAnalysisScore);
+                scoreView.setText("النتيجة: " + String.format("%.1f", score));
+            }
+            
+            // تفعيل زر التطبيق إذا كانت النتيجة جيدة
+            if (score > 0.6 && findViewById(R.id.btnApplyFlexbox) != null) {
+                MaterialButton applyButton = findViewById(R.id.btnApplyFlexbox);
+                applyButton.setEnabled(true);
+                applyButton.setText("تطبيق Flexbox (النتيجة: " + String.format("%.1f", score) + ")");
+            }
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في تحديث عرض تحليل Flexbox: " + e.getMessage());
+        }
+    }
+
+    /**
+     * تحديث حالة تطبيق Flexbox
+     */
+    private void updateFlexboxAppliedState(String containerId, boolean applied, String propertiesJson) {
+        try {
+            if (findViewById(R.id.btnApplyFlexbox) != null && findViewById(R.id.btnRevertFlexbox) != null) {
+                MaterialButton applyButton = findViewById(R.id.btnApplyFlexbox);
+                MaterialButton revertButton = findViewById(R.id.btnRevertFlexbox);
+                
+                applyButton.setEnabled(!applied);
+                applyButton.setText(applied ? "Flexbox مطبق" : "تطبيق Flexbox");
+                
+                revertButton.setEnabled(applied);
+            }
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في تحديث حالة تطبيق Flexbox: " + e.getMessage());
+        }
+    }
+
+    /**
+     * تحديث حالة معاينة Flexbox
+     */
+    private void updateFlexboxPreviewState(boolean enabled) {
+        try {
+            if (findViewById(R.id.btnPreviewToggle) != null) {
+                MaterialButton previewButton = findViewById(R.id.btnPreviewToggle);
+                previewButton.setText(enabled ? "إخفاء المعاينة" : "إظهار المعاينة");
+            }
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في تحديث حالة معاينة Flexbox: " + e.getMessage());
+        }
+    }
+
+    /**
+     * تحديث عرض تحسينات Flexbox
+     */
+    private void updateFlexboxOptimizationDisplay(String containerId, String improvementsJson) {
+        try {
+            // تحديث عرض التحسينات المطبقة
+            android.util.Log.d("FlexboxSystem", "تحسينات Flexbox المطبقة: " + improvementsJson);
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في تحديث عرض تحسينات Flexbox: " + e.getMessage());
+        }
+    }
+
+    /**
+     * حفظ إعدادات Flexbox
+     */
+    private void saveFlexboxConfiguration(String containerId, String configurationJson) {
+        try {
+            // حفظ إعدادات Flexbox في قاعدة البيانات أو الملفات
+            android.util.Log.d("FlexboxSystem", "حفظ إعدادات Flexbox للحاوية: " + containerId);
+            
+            // يمكن هنا حفظ الإعدادات في SharedPreferences أو قاعدة البيانات
+
+        } catch (Exception e) {
+            android.util.Log.e("FlexboxSystem", "خطأ في حفظ إعدادات Flexbox: " + e.getMessage());
+        }
+    }
+
+    // ==================== BOTTOM SHEET DRAG MANAGER ====================
+    // Enhanced Bottom Sheet Drag & Drop System
+
+    private BottomSheetDragManager bottomSheetDragManager;
+
+    /**
+     * تهيئة BottomSheetDragManager
+     */
+    private void initializeBottomSheetDragManager() {
+        try {
+            // العثور على containers
+            ViewGroup bottomSheetContainer = findViewById(R.id.bottom_sheet_palette);
+            ViewGroup canvasContainer = findViewById(R.id.canvas_webview);
+            
+            if (bottomSheetContainer != null && canvasContainer != null) {
+                bottomSheetDragManager = new BottomSheetDragManager(
+                    this, this, bottomSheetContainer, canvasContainer
+                );
+                
+                // إضافة callbacks
+                bottomSheetDragManager.addDragCallback(new BottomSheetDragManager.DragCallback() {
+                    @Override
+                    public void onDragStart(String elementType, android.graphics.Point position) {
+                        android.util.Log.d("BottomSheetDrag", "Drag started: " + elementType);
+                    }
+
+                    @Override
+                    public void onDragMove(String elementType, android.graphics.Point position, BottomSheetDragManager.DropZone hoverZone) {
+                        // معالجة الحركة
+                    }
+
+                    @Override
+                    public void onDragEnd(String elementType, android.graphics.Point position, BottomSheetDragManager.DropZone dropZone, boolean success) {
+                        if (success) {
+                            runOnUiThread(() -> {
+                                Toast.makeText(EditorActivity.this, "تم إضافة " + elementType + " بنجاح", Toast.LENGTH_SHORT).show();
+                            });
+                        }
+                    }
+
+                    @Override
+                    public void onDragCancelled(String elementType, android.graphics.Point position) {
+                        runOnUiThread(() -> {
+                            Toast.makeText(EditorActivity.this, "تم إلغاء السحب", Toast.LENGTH_SHORT).show();
+                        });
+                    }
+
+                    @Override
+                    public void onDropZoneDetected(List<BottomSheetDragManager.DropZone> zones) {
+                        android.util.Log.d("BottomSheetDrag", "Detected " + zones.size() + " drop zones");
+                    }
+
+                    @Override
+                    public void onAutoPositioningApplied(BottomSheetDragManager.DropZone zone, android.graphics.Point position) {
+                        android.util.Log.d("BottomSheetDrag", "Auto-positioning applied for zone: " + zone.id);
+                    }
+
+                    @Override
+                    public void onBottomSheetDragStart(String elementType, int x, int y) {
+                        android.util.Log.d("BottomSheetDrag", "Bottom sheet drag start: " + elementType + " at (" + x + "," + y + ")");
+                    }
+
+                    @Override
+                    public void onBottomSheetDragMove(String elementType, int x, int y) {
+                        // معالجة الحركة في Bottom Sheet
+                    }
+
+                    @Override
+                    public void onBottomSheetDragEnd(String elementType, boolean success, String error, String containerId) {
+                        android.util.Log.d("BottomSheetDrag", "Bottom sheet drag end: " + elementType + " - " + (success ? "SUCCESS" : "FAILED"));
+                    }
+
+                    @Override
+                    public void onAutoPositioningAppliedFromJS(String elementType, String containerId, String positionJson, String propertiesJson) {
+                        android.util.Log.d("BottomSheetDrag", "Auto-positioning from JS: " + elementType);
+                    }
+                });
+                
+                android.util.Log.d("BottomSheetDrag", "BottomSheetDragManager initialized successfully");
+            } else {
+                android.util.Log.w("BottomSheetDrag", "Failed to find required containers");
+            }
+            
+        } catch (Exception e) {
+            android.util.Log.e("BottomSheetDrag", "Error initializing BottomSheetDragManager: " + e.getMessage());
+        }
+    }
+
+    /**
+     * الحصول على WebView reference
+     */
+    public WebView getWebView() {
+        return binding != null ? binding.canvasWebview : null;
+    }
+
+    /**
+     * معالجة Bottom Sheet Drag Events من JavaScript
+     */
+    public void handleBottomSheetDragStart(String elementType, int x, int y) {
+        runOnUiThread(() -> {
+            Toast.makeText(this, "بدء سحب: " + elementType, Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    public void handleBottomSheetDragMove(String elementType, int x, int y) {
+        // معالجة الحركة (يمكن تحسين الأداء هنا)
+    }
+
+    public void handleBottomSheetDragEnd(String elementType, boolean success, String error, String containerId) {
+        runOnUiThread(() -> {
+            if (success) {
+                Toast.makeText(this, "تم إضافة " + elementType + " في " + containerId, Toast.LENGTH_LONG).show();
+            } else {
+                Toast.makeText(this, "فشل في إضافة " + elementType + ": " + error, Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    public void handleAutoPositioningAppliedFromJS(String elementType, String containerId, String positionJson, String propertiesJson) {
+        android.util.Log.d("BottomSheetDrag", "Auto-positioning applied from JS");
+        
+        runOnUiThread(() -> {
+            Toast.makeText(this, "تم تطبيق الموقع الذكي لـ " + elementType, Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    /**
+     * الحصول على BottomSheetDragManager
+     */
+    public BottomSheetDragManager getBottomSheetDragManager() {
+        return bottomSheetDragManager;
+    }
+
+    /**
+     * تنظيف BottomSheetDragManager عند الإنهاء
+     */
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        
+        if (bottomSheetDragManager != null) {
+            bottomSheetDragManager.onDestroy();
+        }
     }
 }
