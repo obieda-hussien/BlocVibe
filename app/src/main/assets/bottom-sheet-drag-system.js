@@ -720,6 +720,10 @@ class BottomSheetDragSystem {
             }
             
             console.log('[BottomSheetDrag] Element added successfully:', newElement);
+            
+            // إشعار Java عن إضافة العنصر للمزامنة مع elementTree
+            this.notifyJavaOfElementAddition(newElement, zone);
+            
             return true;
             
         } catch (error) {
@@ -1087,6 +1091,73 @@ class BottomSheetDragSystem {
         }
         
         console.log('[BottomSheetDrag] System destroyed');
+    }
+
+    /**
+     * إشعار Java عن إضافة عنصر جديد للمزامنة مع elementTree
+     */
+    notifyJavaOfElementAddition(element, zone) {
+        try {
+            // تجميع بيانات العنصر
+            const elementData = {
+                type: this.getElementType(element),
+                id: element.id || this.generateElementId(),
+                containerId: zone ? zone.id : 'body',
+                properties: this.extractElementProperties(element)
+            };
+            
+            // التأكد من وجود ID للعنصر
+            if (!element.id) {
+                element.id = elementData.id;
+            }
+            
+            console.log('[BottomSheetDrag] Notifying Java of element addition:', elementData);
+            
+            // إرسال البيانات لـ Java
+            if (window.AndroidBridge && window.AndroidBridge.syncElementTreeFromDOM) {
+                window.AndroidBridge.syncElementTreeFromDOM(JSON.stringify(elementData));
+            } else {
+                console.warn('[BottomSheetDrag] AndroidBridge interface not available for element sync');
+            }
+            
+        } catch (error) {
+            console.error('[BottomSheetDrag] Error notifying Java:', error);
+        }
+    }
+
+    /**
+     * الحصول على نوع العنصر
+     */
+    getElementType(element) {
+        const tagName = element.tagName.toLowerCase();
+        switch (tagName) {
+            case 'p': return 'paragraph';
+            case 'button': return 'button';
+            case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6': return 'heading';
+            case 'div': return 'div';
+            case 'img': return 'image';
+            case 'a': return 'link';
+            default: return tagName;
+        }
+    }
+
+    /**
+     * توليد ID فريد للعنصر
+     */
+    generateElementId() {
+        return 'element_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    /**
+     * استخراج خصائص العنصر
+     */
+    extractElementProperties(element) {
+        return {
+            text: element.textContent || '',
+            style: element.style.cssText || '',
+            className: element.className || '',
+            tagName: element.tagName.toLowerCase()
+        };
     }
 }
 
