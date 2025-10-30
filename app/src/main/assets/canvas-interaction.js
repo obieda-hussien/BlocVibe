@@ -4130,6 +4130,16 @@
     const MAX_CONCURRENT_DRAGS = 3;
     const PERFORMANCE_THRESHOLD = 30; // FPS threshold
     
+    // ==================== HELPER FUNCTIONS ====================
+    
+    /**
+     * التحقق من حالة السحب النشط
+     * @returns {boolean} - true إذا كان هناك سحب نشط
+     */
+    function isDragging() {
+        return currentState !== DragState.IDLE;
+    }
+    
     // ==================== MANAGER INSTANCES ====================
     
     const dragModeManager = new DragModeManager();
@@ -4663,15 +4673,17 @@
         let startPosition = null;
         let currentPosition = null;
         let internalDragData = null;
+        let longPressTimer = null;
+        let isDragActive = false;
+        let pointerId = null;
+        
+        const LONG_PRESS_DELAY = 500; // 500ms للضغط المطول
+        const QUICK_TAP_MOVEMENT_THRESHOLD = 10; // حد أدنى للحركة لاعتبار النقر كـ tap
         
         element.addEventListener('pointerdown', function(e) {
+            // السماح بالنقر العادي دائماً - لن نمنع الحدث هنا
             // التحقق من إمكانية السحب الداخلي
             if (!canStartInternalDrag(element)) return;
-            
-            e.preventDefault();
-            e.stopPropagation();
-            
-            console.log('[BlocVibe] 🔄 Starting internal drag:', element.id);
             
             // حفظ البيانات الأولية
             startPosition = {
@@ -4681,77 +4693,181 @@
                 timestamp: Date.now()
             };
             
-            internalDragData = {
-                element: element,
-                startPosition: startPosition,
-                movements: [],
-                minMovement: 0
-            };
+            pointerId = e.pointerId;
+            isDragActive = false;
             
-            element.setPointerCapture(e.pointerId);
-            currentState = DragState.INTERNAL_DRAG;
+            // بدء مؤقت الضغط المطول
+            longPressTimer = setTimeout(() => {
+                // بعد 500ms، نبدأ السحب فعلياً
+                if (!isDragActive && startPosition) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    console.log('[BlocVibe] 🔄 Starting internal drag after long press:', element.id);
+                    
+                    internalDragData = {
+                        element: element,
+                        startPosition: startPosition,
+                        movements: [],
+                        minMovement: 0
+                    };
+                    
+                    element.setPointerCapture(pointerId);
+                    currentState = DragState.INTERNAL_DRAG;
+                    isDragActive = true;
+                    
+                    // إضافة feedback بصري للسحب
+                    element.style.opacity = '0.7';
+                    element.style.cursor = 'grabbing';
+                }
+            }, LONG_PRESS_DELAY);
             
-        }, { passive: false });
+        }, { passive: true }); // passive للسماح بالسلوك الافتراضي
         
         element.addEventListener('pointermove', function(e) {
-            if (currentState !== DragState.INTERNAL_DRAG || !startPosition) return;
-            
-            e.preventDefault();
+            if (!startPosition) return;
             
             const currentX = e.clientX;
             const currentY = e.clientY;
             
-            // حساب المسافة المقطوعة
+            // حساب المسافة المقطوعة من نقطة البداية
             const deltaX = currentX - startPosition.x;
             const deltaY = currentY - startPosition.y;
             const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
             
-            // تحديث البيانات
-            currentPosition = { x: currentX, y: currentY };
-            
-            if (distance > MIN_DRAG_DISTANCE) {
-                internalDragData.movements.push({
-                    x: currentX,
-                    y: currentY,
-                    deltaX: deltaX,
-                    deltaY: deltaY,
-                    timestamp: Date.now()
-                });
+            // إذا تحرك المستخدم مسافة كبيرة قبل انتهاء المؤقت، نبدأ السحب فوراً
+            if (!isDragActive && distance > MIN_DRAG_DISTANCE) {
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
                 
-                // تحديث موضع العنصر إذا تجاوز الحد الأدنى
-                if (distance > internalDragData.minMovement + 3) {
-                    performInternalDrag(element, deltaX, deltaY);
-                    internalDragData.minMovement = distance;
+                e.preventDefault();
+                e.stopPropagation();
+                
+                console.log('[BlocVibe] 🔄 Starting internal drag from movement:', element.id);
+                
+                internalDragData = {
+                    element: element,
+                    startPosition: startPosition,
+                    movements: [],
+                    minMovement: 0
+                };
+                
+                element.setPointerCapture(pointerId);
+                currentState = DragState.INTERNAL_DRAG;
+                isDragActive = true;
+                
+                element.style.opacity = '0.7';
+                element.style.cursor = 'grabbing';
+            }
+            
+            // إذا كان السحب نشطاً، نقوم بتحديث الموضع
+            if (currentState === DragState.INTERNAL_DRAG && isDragActive) {
+                e.preventDefault();
+                
+                // تحديث البيانات
+                currentPosition = { x: currentX, y: currentY };
+                
+                if (distance > MIN_DRAG_DISTANCE) {
+                    internalDragData.movements.push({
+                        x: currentX,
+                        y: currentY,
+                        deltaX: deltaX,
+                        deltaY: deltaY,
+                        timestamp: Date.now()
+                    });
+                    
+                    // تحديث موضع العنصر إذا تجاوز الحد الأدنى
+                    if (distance > internalDragData.minMovement + 3) {
+                        performInternalDrag(element, deltaX, deltaY);
+                        internalDragData.minMovement = distance;
+                    }
                 }
             }
             
         }, { passive: false });
         
         element.addEventListener('pointerup', function(e) {
-            if (currentState !== DragState.INTERNAL_DRAG) return;
+            // إلغاء مؤقت الضغط المطول إذا كان لا يزال يعمل
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
             
-            e.preventDefault();
+            // إذا لم يبدأ السحب فعلياً، نعتبرها نقرة عادية
+            if (!isDragActive && startPosition) {
+                const deltaX = e.clientX - startPosition.x;
+                const deltaY = e.clientY - startPosition.y;
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                
+                // نقرة سريعة بدون حركة كبيرة = فتح Properties Panel
+                if (distance < QUICK_TAP_MOVEMENT_THRESHOLD) {
+                    console.log('[BlocVibe] 👆 Quick tap detected, opening Properties Panel');
+                    
+                    // استدعاء handleEnhancedElementClick لفتح Properties Panel
+                    const clickEvent = new PointerEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        clientX: e.clientX,
+                        clientY: e.clientY
+                    });
+                    
+                    element.dispatchEvent(clickEvent);
+                }
+                
+                // إعادة تعيين
+                startPosition = null;
+                pointerId = null;
+                return;
+            }
             
-            console.log('[BlocVibe] ✅ Internal drag completed');
-            
-            // تحليل الحركة وتحديد نوع العملية
-            const dragResult = analyzeInternalDrag(internalDragData);
-            executeInternalDragOperation(element, dragResult);
+            // إذا كان السحب نشطاً، نكمل عملية السحب
+            if (currentState === DragState.INTERNAL_DRAG && isDragActive) {
+                e.preventDefault();
+                
+                console.log('[BlocVibe] ✅ Internal drag completed');
+                
+                // تحليل الحركة وتحديد نوع العملية
+                const dragResult = analyzeInternalDrag(internalDragData);
+                executeInternalDragOperation(element, dragResult);
+                
+                // إزالة feedback البصري
+                element.style.opacity = '';
+                element.style.cursor = '';
+            }
             
             // إعادة تعيين الحالة
             currentState = DragState.IDLE;
             startPosition = null;
             currentPosition = null;
             internalDragData = null;
+            isDragActive = false;
+            pointerId = null;
             
         }, { passive: false });
         
         element.addEventListener('pointercancel', function(e) {
             console.log('[BlocVibe] ⚠️ Internal drag cancelled');
+            
+            // إلغاء مؤقت الضغط المطول
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+            
+            // إزالة feedback البصري
+            element.style.opacity = '';
+            element.style.cursor = '';
+            
+            // إعادة تعيين الحالة
             currentState = DragState.IDLE;
             startPosition = null;
             currentPosition = null;
             internalDragData = null;
+            isDragActive = false;
+            pointerId = null;
         });
     }
     
