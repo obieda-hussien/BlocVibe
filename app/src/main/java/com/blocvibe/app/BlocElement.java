@@ -102,6 +102,27 @@ public class BlocElement {
     }
     
     /**
+     * Get a style property value
+     */
+    public String getStyle(String property) {
+        return this.styles.get(property);
+    }
+    
+    /**
+     * Get an attribute value (property)
+     */
+    public String getProperty(String name) {
+        return this.attributes.get(name);
+    }
+    
+    /**
+     * Get element type (tag name)
+     */
+    public String getElementType() {
+        return this.tag;
+    }
+    
+    /**
      * Generate HTML string from this element and its children
      */
     public String toHtml() {

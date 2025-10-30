@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary Colors -->
+    <color name="primary_color">#2196F3</color>
+    <color name="primary_dark">#1976D2</color>
+    <color name="primary_light">#BBDEFB</color>
+    
+    <!-- Secondary Colors -->
+    <color name="secondary_color">#FF9800</color>
+    <color name="secondary_dark">#F57C00</color>
+    <color name="secondary_light">#FFE0B2</color>
+    
+    <!-- Text Colors -->
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="text_hint">#BDBDBD</color>
+    <color name="white">#FFFFFF</color>
+    
+    <!-- Background Colors -->
+    <color name="background_primary">#FAFAFA</color>
+    <color name="background_secondary">#F5F5F5</color>
+    <color name="background_tertiary">#EEEEEE</color>
+    
+    <!-- Flexbox Preview Colors -->
+    <color name="preview_element_1">#FF5722</color>
+    <color name="preview_element_2">#4CAF50</color>
+    <color name="preview_element_3">#9C27B0</color>
+    <color name="preview_background">#E3F2FD</color>
+    
+    <!-- Info and Status Colors -->
+    <color name="info_color">#2196F3</color>
+    <color name="success_color">#4CAF50</color>
+    <color name="warning_color">#FF9800</color>
+    <color name="error_color">#F44336</color>
+    
+    <!-- Transparent Colors -->
+    <color name="transparent">#00000000</color>
+    <color name="semi_transparent">#80000000</color>
+    <color name="shadow_color">#1A000000</color>
+    
+    <!-- Semantic Colors -->
+    <color name="selection_color">#E1F5FE</color>
+    <color name="hover_color">#F3E5F5</color>
+    <color name="focus_color">#E8F5E8</color>
+    
+    <!-- Border Colors -->
+    <color name="border_light">#E0E0E0</color>
+    <color name="border_medium">#BDBDBD</color>
+    <color name="border_dark">#757575</color>
+    
+    <!-- Card Background -->
+    <color name="card_background">#FFFFFF</color>
+    <color name="card_shadow">#1F000000</color>
+    
+    <!-- Button Colors -->
+    <color name="button_primary">#2196F3</color>
+    <color name="button_primary_pressed">#1976D2</color>
+    <color name="button_secondary">#F5F5F5</color>
+    <color name="button_secondary_text">#757575</color>
+</resources>

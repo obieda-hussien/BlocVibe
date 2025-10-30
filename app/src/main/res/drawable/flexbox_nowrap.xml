@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="24dp"
+    android:viewportWidth="48"
+    android:viewportHeight="24">
+    <!-- Background -->
+    <path
+        android:fillColor="#E8DEF8"
+        android:pathData="M0,0h48v24H0z"/>
+    <!-- Single row of flex items (nowrap) -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M4,8h8v8H4z"/>
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M16,8h8v8h-8z"/>
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M28,8h8v8h-8z"/>
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M40,8h4v8h-4z"/>
+</vector>

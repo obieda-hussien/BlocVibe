@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="36dp"
+    android:viewportWidth="48"
+    android:viewportHeight="36">
+    <!-- Background -->
+    <path
+        android:fillColor="#E8DEF8"
+        android:pathData="M0,0h48v36H0z"/>
+    <!-- First row of flex items -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M4,4h8v8H4z"/>
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M16,4h8v8h-8z"/>
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M28,4h8v8h-8z"/>
+    <!-- Second row (wrapped items) -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M4,16h8v8H4z"/>
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M16,16h8v8h-8z"/>
+</vector>

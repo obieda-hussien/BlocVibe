@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="24dp"
+    android:viewportWidth="48"
+    android:viewportHeight="24">
+    <!-- Background -->
+    <path
+        android:fillColor="#E8DEF8"
+        android:pathData="M0,0h48v24H0z"/>
+    <!-- Flex items arranged horizontally reversed (row-reverse) -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M36,6h8v12h-8z"/>
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M24,6h8v12h-8z"/>
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M12,6h8v12h-8z"/>
+    <!-- Arrow indicating reverse direction -->
+    <path
+        android:fillColor="#1C1B1F"
+        android:pathData="M4,11h6v2H4z"/>
+    <path
+        android:fillColor="#1C1B1F"
+        android:pathData="M4,12l-3,-3 3,-3z"/>
+</vector>

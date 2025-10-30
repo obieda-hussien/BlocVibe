@@ -1,0 +1,2392 @@
+/**
+ * BlocVibe Ultra-Advanced Canvas Interaction System v3.0
+ * ========================================================
+ * نظام Drag & Drop متطور جداً مع تكامل النظام الجديد
+ * يشمل 4 أنواع من العمليات مع State Machine متقدم
+ * 
+ * التقنيات المستخدمة:
+ * - DragModeManager لإدارة أنواع السحب
+ * - DropZoneManager لإدارة مناطق الإسقاط
+ * - PositionCalculator للحسابات الدقيقة
+ * - VisualFeedbackSystem للتغذية الراجعة البصرية
+ * - Cache و Performance Optimizations
+ * - Error Handling و Recovery Mechanisms
+ * - RequestAnimationFrame (تحديث سلس 60 FPS)
+ * - Touch Events Fallback (توافق كامل)
+ */
+
+(function() {
+    'use strict';
+    
+    // ==================== MANAGER CLASSES ====================
+    
+    class DragModeManager {
+        constructor() {
+            this.currentMode = null;
+            this.availableModes = new Set(['EXTERNAL', 'INTERNAL', 'DUPLICATE', 'REORDER']);
+            this.modeListeners = [];
+        }
+        
+        setMode(mode) {
+            if (this.availableModes.has(mode)) {
+                console.log(`[BlocVibe] 🎯 Setting drag mode: ${mode}`);
+                this.currentMode = mode;
+                this.notifyListeners();
+                return true;
+            }
+            console.warn(`[BlocVibe] ⚠️ Invalid drag mode: ${mode}`);
+            return false;
+        }
+        
+        getMode() {
+            return this.currentMode;
+        }
+        
+        isMode(mode) {
+            return this.currentMode === mode;
+        }
+        
+        addListener(callback) {
+            this.modeListeners.push(callback);
+        }
+        
+        notifyListeners() {
+            this.modeListeners.forEach(callback => {
+                try {
+                    callback(this.currentMode);
+                } catch (error) {
+                    console.error('[BlocVibe] ❌ Error in mode listener:', error);
+                }
+            });
+        }
+    }
+    
+    class DropZoneManager {
+        constructor() {
+            this.dropZones = new Map();
+            this.highlightedZone = null;
+            this.zoneCache = new Map();
+            this.lastCacheUpdate = 0;
+            this.CACHE_DURATION = 200; // milliseconds
+        }
+        
+        registerZone(elementId, zone) {
+            if (!elementId || !zone) return;
+            
+            const zoneData = {
+                element: zone.element || null,
+                bounds: zone.bounds || null,
+                capacity: zone.capacity || 'unlimited',
+                constraints: zone.constraints || {},
+                acceptTypes: zone.acceptTypes || ['all'],
+                visualFeedback: zone.visualFeedback || true
+            };
+            
+            this.dropZones.set(elementId, zoneData);
+            console.log(`[BlocVibe] 📍 Registered drop zone: ${elementId}`);
+        }
+        
+        unregisterZone(elementId) {
+            if (this.dropZones.has(elementId)) {
+                this.dropZones.delete(elementId);
+                this.zoneCache.delete(elementId);
+                console.log(`[BlocVibe] 🗑️ Unregistered drop zone: ${elementId}`);
+            }
+        }
+        
+        findDropZone(x, y, elementType = 'all') {
+            const now = Date.now();
+            if (now - this.lastCacheUpdate > this.CACHE_DURATION) {
+                this.updateZoneCache();
+            }
+            
+            for (let [zoneId, zone] of this.dropZones) {
+                const cached = this.zoneCache.get(zoneId);
+                if (cached && cached.containsPoint(x, y)) {
+                    if (this.canAccept(zone, elementType)) {
+                        return { id: zoneId, zone: zone };
+                    }
+                }
+            }
+            return null;
+        }
+        
+        canAccept(zone, elementType) {
+            if (zone.acceptTypes.includes('all')) return true;
+            return zone.acceptTypes.includes(elementType);
+        }
+        
+        updateZoneCache() {
+            this.zoneCache.clear();
+            
+            for (let [zoneId, zone] of this.dropZones) {
+                if (zone.element && zone.element.getBoundingClientRect) {
+                    const rect = zone.element.getBoundingClientRect();
+                    this.zoneCache.set(zoneId, {
+                        bounds: rect,
+                        containsPoint: (x, y) => {
+                            return x >= rect.left && x <= rect.right && 
+                                   y >= rect.top && y <= rect.bottom;
+                        }
+                    });
+                }
+            }
+            
+            this.lastCacheUpdate = Date.now();
+        }
+        
+        highlightZone(zoneId) {
+            if (this.highlightedZone === zoneId) return;
+            
+            // Remove previous highlight
+            if (this.highlightedZone && this.dropZones.has(this.highlightedZone)) {
+                this.removeZoneHighlight(this.highlightedZone);
+            }
+            
+            // Add new highlight
+            if (zoneId && this.dropZones.has(zoneId)) {
+                this.highlightedZone = zoneId;
+                this.applyZoneHighlight(zoneId);
+                console.log(`[BlocVibe] ✨ Highlighted drop zone: ${zoneId}`);
+            }
+        }
+        
+        applyZoneHighlight(zoneId) {
+            const zone = this.dropZones.get(zoneId);
+            if (zone && zone.element && zone.visualFeedback) {
+                zone.element.style.outline = '3px solid #0D6EFD';
+                zone.element.style.backgroundColor = 'rgba(13, 110, 253, 0.1)';
+                zone.element.style.transition = 'all 0.3s ease';
+            }
+        }
+        
+        removeZoneHighlight(zoneId) {
+            const zone = this.dropZones.get(zoneId);
+            if (zone && zone.element) {
+                zone.element.style.outline = '';
+                zone.element.style.backgroundColor = '';
+            }
+            if (this.highlightedZone === zoneId) {
+                this.highlightedZone = null;
+            }
+        }
+    }
+    
+    class PositionCalculator {
+        constructor() {
+            this.cache = new Map();
+            this.cacheTimeout = 100; // milliseconds
+            this.lastCalculation = 0;
+        }
+        
+        calculateDropPosition(sourceElement, targetElement, dropX, dropY) {
+            const key = `${sourceElement.id}-${targetElement.id}-${dropX}-${dropY}`;
+            
+            // Check cache first
+            const cached = this.getCachedCalculation(key);
+            if (cached) {
+                return cached;
+            }
+            
+            const sourceRect = sourceElement.getBoundingClientRect();
+            const targetRect = targetElement.getBoundingClientRect();
+            
+            // Calculate various drop positions
+            const positions = {
+                before: this.calculateBeforePosition(targetRect, dropY),
+                after: this.calculateAfterPosition(targetRect, dropY),
+                inside: this.calculateInsidePosition(targetRect, dropX, dropY),
+                nearest: this.calculateNearestPosition(targetRect, dropX, dropY)
+            };
+            
+            // Determine best position based on drop type
+            const result = {
+                position: this.selectBestPosition(positions, dropX, dropY),
+                targetIndex: this.calculateTargetIndex(targetElement, positions.position),
+                isValidDrop: this.isValidDropPosition(positions.position, sourceRect, targetRect)
+            };
+            
+            // Cache the result
+            this.setCachedCalculation(key, result);
+            
+            return result;
+        }
+        
+        calculateBeforePosition(targetRect, dropY) {
+            return {
+                type: 'before',
+                y: targetRect.top - 2,
+                x: targetRect.left,
+                width: targetRect.width,
+                priority: Math.abs(dropY - targetRect.top) < 20 ? 1 : 2
+            };
+        }
+        
+        calculateAfterPosition(targetRect, dropY) {
+            return {
+                type: 'after',
+                y: targetRect.bottom - 2,
+                x: targetRect.left,
+                width: targetRect.width,
+                priority: Math.abs(dropY - targetRect.bottom) < 20 ? 1 : 2
+            };
+        }
+        
+        calculateInsidePosition(targetRect, dropX, dropY) {
+            const centerX = targetRect.left + targetRect.width / 2;
+            const centerY = targetRect.top + targetRect.height / 2;
+            const distance = Math.sqrt(
+                Math.pow(dropX - centerX, 2) + Math.pow(dropY - centerY, 2)
+            );
+            
+            return {
+                type: 'inside',
+                x: dropX,
+                y: dropY,
+                priority: distance < 50 ? 0.5 : 1.5
+            };
+        }
+        
+        calculateNearestPosition(targetRect, dropX, dropY) {
+            const distances = {
+                top: Math.abs(dropY - targetRect.top),
+                bottom: Math.abs(dropY - targetRect.bottom),
+                left: Math.abs(dropX - targetRect.left),
+                right: Math.abs(dropX - targetRect.right)
+            };
+            
+            const minDistance = Math.min(...Object.values(distances));
+            const nearestSide = Object.keys(distances).find(
+                key => distances[key] === minDistance
+            );
+            
+            return {
+                type: 'nearest',
+                side: nearestSide,
+                priority: 1,
+                distance: minDistance
+            };
+        }
+        
+        selectBestPosition(positions, dropX, dropY) {
+            // Sort by priority and return best option
+            const sorted = Object.entries(positions)
+                .map(([type, pos]) => ({ type, ...pos }))
+                .sort((a, b) => a.priority - b.priority);
+            
+            return sorted[0];
+        }
+        
+        calculateTargetIndex(targetElement, position) {
+            const children = Array.from(targetElement.children);
+            
+            if (position.type === 'before') {
+                return 0;
+            } else if (position.type === 'after') {
+                return children.length;
+            } else if (position.type === 'inside') {
+                // Find best insertion point based on y-coordinate
+                let insertIndex = 0;
+                for (let i = 0; i < children.length; i++) {
+                    const rect = children[i].getBoundingClientRect();
+                    if (position.y > rect.top + rect.height / 2) {
+                        insertIndex = i + 1;
+                    }
+                }
+                return insertIndex;
+            }
+            
+            return children.length;
+        }
+        
+        isValidDropPosition(position, sourceRect, targetRect) {
+            // Prevent dropping element into itself or its descendants
+            if (sourceRect === targetRect) return false;
+            if (this.isDescendant(targetRect, sourceRect)) return false;
+            
+            // Additional validations based on position type
+            if (position.type === 'inside') {
+                const centerX = targetRect.left + targetRect.width / 2;
+                const centerY = targetRect.top + targetRect.height / 2;
+                const distance = Math.sqrt(
+                    Math.pow(centerX - position.x, 2) + 
+                    Math.pow(centerY - position.y, 2)
+                );
+                return distance < Math.min(targetRect.width, targetRect.height) / 2;
+            }
+            
+            return true;
+        }
+        
+        isDescendant(childRect, parentRect) {
+            return parentRect.left >= childRect.left && 
+                   parentRect.right <= childRect.right &&
+                   parentRect.top >= childRect.top && 
+                   parentRect.bottom <= childRect.bottom;
+        }
+        
+        getCachedCalculation(key) {
+            const cached = this.cache.get(key);
+            if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+                return cached.result;
+            }
+            return null;
+        }
+        
+        setCachedCalculation(key, result) {
+            this.cache.set(key, {
+                result: result,
+                timestamp: Date.now()
+            });
+            
+            // Clean old cache entries
+            if (this.cache.size > 100) {
+                this.cleanCache();
+            }
+        }
+        
+        cleanCache() {
+            const now = Date.now();
+            for (let [key, cached] of this.cache) {
+                if (now - cached.timestamp > this.cacheTimeout) {
+                    this.cache.delete(key);
+                }
+            }
+        }
+    }
+    
+    class VisualFeedbackSystem {
+        constructor() {
+            this.activeEffects = new Map();
+            this.effectQueue = [];
+            this.isProcessingQueue = false;
+            this.maxConcurrentEffects = 3;
+        }
+        
+        createDragGhost(element, options = {}) {
+            const ghostId = `ghost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            const ghost = document.createElement('div');
+            ghost.id = ghostId;
+            ghost.className = 'drag-ghost-ultra';
+            
+            const defaultStyles = {
+                position: 'fixed',
+                pointerEvents: 'none',
+                zIndex: '10000',
+                opacity: '0',
+                transform: 'scale(0.9) rotate(0deg)',
+                willChange: 'transform, opacity, left, top',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: '0 12px 40px rgba(0,0,0,0.35), 0 4px 12px rgba(0,0,0,0.25)',
+                border: '2px solid #0D6EFD',
+                borderRadius: '8px',
+                background: 'white',
+                padding: '8px',
+                maxWidth: '300px',
+                maxHeight: '200px',
+                overflow: 'hidden'
+            };
+            
+            // Apply styles
+            Object.assign(ghost.style, defaultStyles, options.styles || {});
+            
+            // Clone element content
+            const clone = element.cloneNode(true);
+            clone.style.margin = '0';
+            clone.style.pointerEvents = 'none';
+            ghost.appendChild(clone);
+            
+            document.body.appendChild(ghost);
+            
+            // Animate in
+            requestAnimationFrame(() => {
+                ghost.style.opacity = options.opacity || '0.9';
+                ghost.style.transform = options.transform || 'scale(1) rotate(3deg)';
+            });
+            
+            this.activeEffects.set(ghostId, { element: ghost, type: 'drag-ghost' });
+            return ghostId;
+        }
+        
+        updateGhostPosition(ghostId, x, y) {
+            const effect = this.activeEffects.get(ghostId);
+            if (!effect) return;
+            
+            const ghost = effect.element;
+            ghost.style.left = `${x}px`;
+            ghost.style.top = `${y}px`;
+            
+            // Add subtle animation based on movement speed
+            const deltaX = ghost.lastX ? Math.abs(x - ghost.lastX) : 0;
+            const deltaY = ghost.lastY ? Math.abs(y - ghost.lastY) : 0;
+            const movement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            
+            if (movement > 10) {
+                ghost.style.transform = `scale(1.02) rotate(${(x + y) % 360}deg)`;
+            }
+            
+            ghost.lastX = x;
+            ghost.lastY = y;
+        }
+        
+        removeGhost(ghostId) {
+            const effect = this.activeEffects.get(ghostId);
+            if (!effect) return;
+            
+            const ghost = effect.element;
+            ghost.style.opacity = '0';
+            ghost.style.transform = 'scale(0.9) rotate(0deg)';
+            
+            setTimeout(() => {
+                if (ghost.parentNode) {
+                    ghost.parentNode.removeChild(ghost);
+                }
+                this.activeEffects.delete(ghostId);
+            }, 300);
+        }
+        
+        createDropIndicator(targetElement, position, options = {}) {
+            const indicatorId = `indicator-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            const indicator = document.createElement('div');
+            indicator.id = indicatorId;
+            indicator.className = 'drop-indicator-ultra';
+            
+            const rect = targetElement.getBoundingClientRect();
+            const scrollY = window.scrollY || document.documentElement.scrollTop;
+            const scrollX = window.scrollX || document.documentElement.scrollLeft;
+            
+            const defaultStyles = {
+                position: 'absolute',
+                height: '4px',
+                background: 'linear-gradient(90deg, #0D6EFD, #0984e3, #0D6EFD)',
+                backgroundSize: '200% 100%',
+                pointerEvents: 'none',
+                display: 'none',
+                zIndex: '9999',
+                boxShadow: '0 0 10px rgba(13, 110, 253, 0.8), 0 0 20px rgba(13, 110, 253, 0.4)',
+                borderRadius: '2px',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                willChange: 'transform, opacity',
+                animation: 'pulse 2s infinite'
+            };
+            
+            Object.assign(indicator.style, defaultStyles, options.styles || {});
+            
+            // Position based on drop type
+            let top, left, width, height;
+            
+            switch (position.type) {
+                case 'before':
+                    top = rect.top + scrollY - 2;
+                    left = rect.left + scrollX;
+                    width = rect.width;
+                    height = '4px';
+                    break;
+                case 'after':
+                    top = rect.bottom + scrollY - 2;
+                    left = rect.left + scrollX;
+                    width = rect.width;
+                    height = '4px';
+                    break;
+                case 'inside':
+                    top = rect.top + scrollY + (rect.height / 2) - 2;
+                    left = rect.left + scrollX + (rect.width / 2) - 2;
+                    width = '4px';
+                    height = '4px';
+                    break;
+                default:
+                    top = rect.bottom + scrollY - 2;
+                    left = rect.left + scrollX;
+                    width = rect.width;
+                    height = '4px';
+            }
+            
+            indicator.style.top = `${top}px`;
+            indicator.style.left = `${left}px`;
+            indicator.style.width = `${width}px`;
+            indicator.style.height = `${height}px`;
+            
+            document.body.appendChild(indicator);
+            
+            // Animate in
+            requestAnimationFrame(() => {
+                indicator.style.display = 'block';
+                indicator.style.opacity = '1';
+                indicator.style.transform = 'scale(1)';
+            });
+            
+            this.activeEffects.set(indicatorId, { element: indicator, type: 'drop-indicator' });
+            return indicatorId;
+        }
+        
+        removeDropIndicator(indicatorId) {
+            const effect = this.activeEffects.get(indicatorId);
+            if (!effect) return;
+            
+            const indicator = effect.element;
+            indicator.style.opacity = '0';
+            indicator.style.transform = 'scale(0.9)';
+            
+            setTimeout(() => {
+                if (indicator.parentNode) {
+                    indicator.parentNode.removeChild(indicator);
+                }
+                this.activeEffects.delete(indicatorId);
+            }, 200);
+        }
+        
+        createValidationFeedback(element, type, message) {
+            const feedbackId = `feedback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            const feedback = document.createElement('div');
+            feedback.id = feedbackId;
+            feedback.className = `validation-feedback ${type}`;
+            
+            const styles = {
+                position: 'fixed',
+                top: '20px',
+                right: '20px',
+                padding: '12px 20px',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                zIndex: '10001',
+                pointerEvents: 'none',
+                transform: 'translateX(100%)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                maxWidth: '300px',
+                wordWrap: 'break-word'
+            };
+            
+            // Style based on type
+            switch (type) {
+                case 'success':
+                    styles.backgroundColor = 'rgba(40, 167, 69, 0.95)';
+                    styles.color = 'white';
+                    break;
+                case 'warning':
+                    styles.backgroundColor = 'rgba(255, 193, 7, 0.95)';
+                    styles.color = 'black';
+                    break;
+                case 'error':
+                    styles.backgroundColor = 'rgba(220, 53, 69, 0.95)';
+                    styles.color = 'white';
+                    break;
+                default:
+                    styles.backgroundColor = 'rgba(13, 110, 253, 0.95)';
+                    styles.color = 'white';
+            }
+            
+            Object.assign(feedback.style, styles);
+            feedback.textContent = message;
+            
+            document.body.appendChild(feedback);
+            
+            // Animate in
+            requestAnimationFrame(() => {
+                feedback.style.transform = 'translateX(0)';
+            });
+            
+            // Auto-remove
+            setTimeout(() => {
+                this.removeValidationFeedback(feedbackId);
+            }, 3000);
+            
+            this.activeEffects.set(feedbackId, { element: feedback, type: 'validation-feedback' });
+            return feedbackId;
+        }
+        
+        removeValidationFeedback(feedbackId) {
+            const effect = this.activeEffects.get(feedbackId);
+            if (!effect) return;
+            
+            const feedback = effect.element;
+            feedback.style.transform = 'translateX(100%)';
+            
+            setTimeout(() => {
+                if (feedback.parentNode) {
+                    feedback.parentNode.removeChild(feedback);
+                }
+                this.activeEffects.delete(feedbackId);
+            }, 300);
+        }
+        
+        createHighlightEffect(element, type = 'selection') {
+            const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            const overlay = document.createElement('div');
+            overlay.id = highlightId;
+            overlay.className = `highlight-effect ${type}`;
+            
+            const rect = element.getBoundingClientRect();
+            const scrollX = window.scrollX || document.documentElement.scrollLeft;
+            const scrollY = window.scrollY || document.documentElement.scrollTop;
+            
+            const styles = {
+                position: 'absolute',
+                top: `${rect.top + scrollY}px`,
+                left: `${rect.left + scrollX}px`,
+                width: `${rect.width}px`,
+                height: `${rect.height}px`,
+                pointerEvents: 'none',
+                zIndex: '9998',
+                transition: 'all 0.3s ease',
+                borderRadius: '4px'
+            };
+            
+            switch (type) {
+                case 'selection':
+                    styles.border = '3px solid #0D6EFD';
+                    styles.backgroundColor = 'rgba(13, 110, 253, 0.1)';
+                    styles.boxShadow = '0 0 10px rgba(13, 110, 253, 0.3)';
+                    break;
+                case 'warning':
+                    styles.border = '3px solid #ffc107';
+                    styles.backgroundColor = 'rgba(255, 193, 7, 0.1)';
+                    styles.boxShadow = '0 0 10px rgba(255, 193, 7, 0.3)';
+                    break;
+                case 'error':
+                    styles.border = '3px solid #dc3545';
+                    styles.backgroundColor = 'rgba(220, 53, 69, 0.1)';
+                    styles.boxShadow = '0 0 10px rgba(220, 53, 69, 0.3)';
+                    break;
+            }
+            
+            Object.assign(overlay.style, styles);
+            
+            // Position relative to element's parent
+            if (element.parentNode && element.parentNode !== document.body) {
+                element.parentNode.style.position = 'relative';
+                element.parentNode.appendChild(overlay);
+            } else {
+                document.body.appendChild(overlay);
+            }
+            
+            this.activeEffects.set(highlightId, { 
+                element: overlay, 
+                type: 'highlight-effect',
+                target: element 
+            });
+            
+            return highlightId;
+        }
+        
+        removeHighlightEffect(highlightId) {
+            const effect = this.activeEffects.get(highlightId);
+            if (!effect) return;
+            
+            const overlay = effect.element;
+            overlay.style.opacity = '0';
+            
+            setTimeout(() => {
+                if (overlay.parentNode) {
+                    overlay.parentNode.removeChild(overlay);
+                }
+                this.activeEffects.delete(highlightId);
+            }, 300);
+        }
+        
+        clearAllEffects() {
+            this.activeEffects.forEach((effect, id) => {
+                try {
+                    switch (effect.type) {
+                        case 'drag-ghost':
+                            this.removeGhost(id);
+                            break;
+                        case 'drop-indicator':
+                            this.removeDropIndicator(id);
+                            break;
+                        case 'validation-feedback':
+                            this.removeValidationFeedback(id);
+                            break;
+                        case 'highlight-effect':
+                            this.removeHighlightEffect(id);
+                            break;
+                    }
+                } catch (error) {
+                    console.error('[BlocVibe] ❌ Error removing effect:', error);
+                }
+            });
+        }
+    }
+    
+    // ==================== ENHANCED STATE MANAGEMENT ====================
+    
+    const DragState = {
+        IDLE: 'idle',
+        READY: 'ready',
+        DRAGGING: 'dragging',
+        DROPPING: 'dropping',
+        INTERNAL_DRAG: 'internal_drag', // إضافة النمط الجديد
+        RECOVERING: 'recovering',
+        VALIDATING: 'validating'
+    };
+    
+    const DragTypes = {
+        EXTERNAL: 'external',
+        INTERNAL: 'internal',
+        DUPLICATE: 'duplicate',
+        REORDER: 'reorder'
+    };
+    
+    // ==================== ENHANCED VARIABLES ====================
+    
+    let currentState = DragState.IDLE;
+    let dragType = null;
+    let selectedElements = [];
+    let draggedElement = null;
+    let dragSource = null;
+    let dragGhostId = null;
+    let dropIndicatorId = null;
+    let multiSelectMode = false;
+    let operationQueue = [];
+    let isProcessingQueue = false;
+    let lastRenderTime = 0;
+    
+    // Enhanced pointer tracking
+    let currentPointerX = 0;
+    let currentPointerY = 0;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+    let lastPointerX = 0;
+    let lastPointerY = 0;
+    let pointerVelocity = 0;
+    
+    // Animation loop
+    let animationFrameId = null;
+    let isAnimating = false;
+    
+    // Enhanced recovery system
+    let recoveryTimer = null;
+    let stateCheckTimer = null;
+    const RECOVERY_TIMEOUT = 3000; // 3 ثوانٍ
+    const STATE_CHECK_INTERVAL = 1000; // 1 ثانية
+    
+    // Performance monitoring
+    let dragStartTime = 0;
+    let frameCount = 0;
+    let lastFrameTime = 0;
+    let performanceMetrics = {
+        averageFPS: 0,
+        droppedFrames: 0,
+        totalDrags: 0,
+        successfulDrops: 0
+    };
+    
+    // Cache and optimizations
+    let elementCache = new Map();
+    let layoutCache = new Map();
+    const CACHE_DURATION = 500; // milliseconds
+    let lastCacheUpdate = 0;
+    
+    // Error handling
+    let errorLog = [];
+    let maxErrorLogSize = 50;
+    
+    // Enhanced constants
+    const RENDER_DEBOUNCE_MS = 300;
+    const MIN_DRAG_DISTANCE = 5;
+    const GHOST_OFFSET = 15;
+    const MAX_CONCURRENT_DRAGS = 3;
+    const PERFORMANCE_THRESHOLD = 30; // FPS threshold
+    
+    // ==================== MANAGER INSTANCES ====================
+    
+    const dragModeManager = new DragModeManager();
+    const dropZoneManager = new DropZoneManager();
+    const positionCalculator = new PositionCalculator();
+    const visualFeedbackSystem = new VisualFeedbackSystem();
+    
+    // ==================== ENHANCED INITIALIZATION ====================
+    
+    function init() {
+        console.log('[BlocVibe] 🚀 Initializing Ultra-Advanced Canvas System v3.0...');
+        
+        setupEnhancedVisualComponents();
+        setupEventListeners();
+        makeElementsInteractive();
+        setupDropZones();
+        startQueueProcessor();
+        startStateMonitor();
+        startPerformanceMonitor();
+        initializeKeyboardShortcuts();
+        
+        console.log('[BlocVibe] ✅ Canvas interaction fully initialized with enhanced managers');
+    }
+    
+    // ==================== ENHANCED VISUAL COMPONENTS ====================
+    
+    function setupEnhancedVisualComponents() {
+        setupDropIndicator();
+        setupDragGhost();
+        setupCSSAnimations();
+    }
+    
+    function setupCSSAnimations() {
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes pulse {
+                0%, 100% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+            }
+            
+            @keyframes shake {
+                0%, 100% { transform: translateX(0); }
+                25% { transform: translateX(-5px); }
+                75% { transform: translateX(5px); }
+            }
+            
+            @keyframes bounce {
+                0%, 20%, 60%, 100% { transform: translateY(0); }
+                40% { transform: translateY(-10px); }
+                80% { transform: translateY(-5px); }
+            }
+            
+            .drag-ghost-ultra {
+                backdrop-filter: blur(4px);
+                background: rgba(255, 255, 255, 0.95);
+            }
+            
+            .drop-indicator-ultra {
+                background: linear-gradient(90deg, #0D6EFD, #0984e3, #0D6EFD);
+                background-size: 200% 100%;
+                animation: pulse 2s infinite;
+            }
+            
+            .validation-feedback.success {
+                animation: bounce 0.5s ease;
+            }
+            
+            .validation-feedback.error {
+                animation: shake 0.5s ease;
+            }
+            
+            .highlight-effect {
+                backdrop-filter: blur(2px);
+            }
+            
+            .bloc-dragging {
+                transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
+            }
+            
+            .bloc-selected {
+                box-shadow: 0 0 0 2px #0D6EFD inset;
+                animation: pulse 1.5s infinite;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    function setupDropIndicator() {
+        dropIndicator = document.createElement('div');
+        dropIndicator.id = 'drop-indicator';
+        dropIndicator.style.cssText = `
+            position: absolute;
+            height: 4px;
+            background: linear-gradient(90deg, #0D6EFD, #0984e3);
+            pointer-events: none;
+            display: none;
+            z-index: 9999;
+            box-shadow: 0 0 10px rgba(13, 110, 253, 0.8),
+                        0 0 20px rgba(13, 110, 253, 0.4);
+            border-radius: 2px;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            will-change: transform, opacity;
+            background-size: 200% 100%;
+            animation: pulse 2s infinite;
+        `;
+        document.body.appendChild(dropIndicator);
+    }
+    
+    function setupDragGhost() {
+        dragGhost = document.createElement('div');
+        dragGhost.id = 'drag-ghost';
+        dragGhost.style.cssText = `
+            position: fixed;
+            pointer-events: none;
+            display: none;
+            z-index: 10000;
+            opacity: 0;
+            transform: rotate(0deg) scale(0.95);
+            will-change: transform, left, top, opacity;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.35),
+                        0 4px 12px rgba(0,0,0,0.25);
+            border: 2px solid #0D6EFD;
+            border-radius: 8px;
+            background: white;
+            padding: 8px;
+            max-width: 300px;
+            transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(4px);
+        `;
+        document.body.appendChild(dragGhost);
+    }
+    
+    // ==================== ENHANCED EVENT LISTENERS ====================
+    
+    function setupEventListeners() {
+        // Prevent default behaviors
+        document.addEventListener('dragstart', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+        
+        document.addEventListener('selectstart', function(e) {
+            if (currentState === DragState.DRAGGING) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+        
+        // Enhanced keyboard events
+        document.addEventListener('keydown', handleEnhancedKeyDown);
+        document.addEventListener('keyup', handleEnhancedKeyUp);
+        
+        // Selection
+        document.addEventListener('click', handleEnhancedElementClick);
+        
+        // Context menu
+        document.addEventListener('contextmenu', function(e) {
+            if (currentState === DragState.DRAGGING) {
+                e.preventDefault();
+            }
+        });
+        
+        // Window events for cleanup
+        window.addEventListener('beforeunload', cleanup);
+        window.addEventListener('blur', handleWindowBlur);
+    }
+    
+    // ==================== INTERNAL DRAG OPERATIONS ====================
+    
+    /**
+     * تفعيل عمليات السحب الداخلي (INTERNAL Drag)
+     */
+    function enableInternalDrag(element) {
+        let startPosition = null;
+        let currentPosition = null;
+        let internalDragData = null;
+        
+        element.addEventListener('pointerdown', function(e) {
+            // التحقق من إمكانية السحب الداخلي
+            if (!canStartInternalDrag(element)) return;
+            
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('[BlocVibe] 🔄 Starting internal drag:', element.id);
+            
+            // حفظ البيانات الأولية
+            startPosition = {
+                x: e.clientX,
+                y: e.clientY,
+                rect: element.getBoundingClientRect(),
+                timestamp: Date.now()
+            };
+            
+            internalDragData = {
+                element: element,
+                startPosition: startPosition,
+                movements: [],
+                minMovement: 0
+            };
+            
+            element.setPointerCapture(e.pointerId);
+            currentState = DragState.INTERNAL_DRAG;
+            
+        }, { passive: false });
+        
+        element.addEventListener('pointermove', function(e) {
+            if (currentState !== DragState.INTERNAL_DRAG || !startPosition) return;
+            
+            e.preventDefault();
+            
+            const currentX = e.clientX;
+            const currentY = e.clientY;
+            
+            // حساب المسافة المقطوعة
+            const deltaX = currentX - startPosition.x;
+            const deltaY = currentY - startPosition.y;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            
+            // تحديث البيانات
+            currentPosition = { x: currentX, y: currentY };
+            
+            if (distance > MIN_DRAG_DISTANCE) {
+                internalDragData.movements.push({
+                    x: currentX,
+                    y: currentY,
+                    deltaX: deltaX,
+                    deltaY: deltaY,
+                    timestamp: Date.now()
+                });
+                
+                // تحديث موضع العنصر إذا تجاوز الحد الأدنى
+                if (distance > internalDragData.minMovement + 3) {
+                    performInternalDrag(element, deltaX, deltaY);
+                    internalDragData.minMovement = distance;
+                }
+            }
+            
+        }, { passive: false });
+        
+        element.addEventListener('pointerup', function(e) {
+            if (currentState !== DragState.INTERNAL_DRAG) return;
+            
+            e.preventDefault();
+            
+            console.log('[BlocVibe] ✅ Internal drag completed');
+            
+            // تحليل الحركة وتحديد نوع العملية
+            const dragResult = analyzeInternalDrag(internalDragData);
+            executeInternalDragOperation(element, dragResult);
+            
+            // إعادة تعيين الحالة
+            currentState = DragState.IDLE;
+            startPosition = null;
+            currentPosition = null;
+            internalDragData = null;
+            
+        }, { passive: false });
+        
+        element.addEventListener('pointercancel', function(e) {
+            console.log('[BlocVibe] ⚠️ Internal drag cancelled');
+            currentState = DragState.IDLE;
+            startPosition = null;
+            currentPosition = null;
+            internalDragData = null;
+        });
+    }
+    
+    function canStartInternalDrag(element) {
+        // التحقق من وجود عناصر فرعية قابلة للتحريك
+        const childElements = element.querySelectorAll('[id^="bloc-"]');
+        return childElements.length > 0;
+    }
+    
+    function performInternalDrag(element, deltaX, deltaY) {
+        const children = element.querySelectorAll('[id^="bloc-"]');
+        
+        children.forEach((child, index) => {
+            // حفظ الموضع الأصلي
+            if (!child.originalTransform) {
+                child.originalTransform = child.style.transform || 'translate(0px, 0px)';
+            }
+            
+            // حساب الموضع الجديد
+            const movementIntensity = 0.3; // عامل التخفيف
+            const newX = deltaX * movementIntensity * (index + 1) / children.length;
+            const newY = deltaY * movementIntensity * (index + 1) / children.length;
+            
+            // تطبيق التأثير البصري
+            child.style.transform = `translate(${newX}px, ${newY}px)`;
+            child.style.transition = 'transform 0.1s ease-out';
+            child.classList.add('bloc-internal-dragging');
+        });
+        
+        // إضافة مؤشر بصري للعنصر الأصلي
+        element.style.backgroundColor = 'rgba(13, 110, 253, 0.1)';
+        element.style.border = '2px dashed #0D6EFD';
+    }
+    
+    function analyzeInternalDrag(dragData) {
+        if (!dragData || dragData.movements.length === 0) {
+            return { type: 'none', confidence: 0 };
+        }
+        
+        const movements = dragData.movements;
+        const lastMovement = movements[movements.length - 1];
+        
+        // تحليل الاتجاه
+        const horizontalMovement = movements.reduce((sum, m) => sum + m.deltaX, 0) / movements.length;
+        const verticalMovement = movements.reduce((sum, m) => sum + m.deltaY, 0) / movements.length;
+        
+        const absHorizontal = Math.abs(horizontalMovement);
+        const absVertical = Math.abs(verticalMovement);
+        
+        // تحديد نوع العملية
+        if (absHorizontal > absVertical * 1.5) {
+            return {
+                type: 'horizontal_reorder',
+                direction: horizontalMovement > 0 ? 'right' : 'left',
+                confidence: absHorizontal / Math.max(absHorizontal, absVertical),
+                strength: absHorizontal
+            };
+        } else if (absVertical > absHorizontal * 1.5) {
+            return {
+                type: 'vertical_stack',
+                direction: verticalMovement > 0 ? 'down' : 'up',
+                confidence: absVertical / Math.max(absHorizontal, absVertical),
+                strength: absVertical
+            };
+        } else {
+            return {
+                type: 'mixed_rearrangement',
+                confidence: Math.min(absHorizontal, absVertical) / Math.max(absHorizontal, absVertical),
+                strength: Math.sqrt(absHorizontal * absHorizontal + absVertical * absVertical)
+            };
+        }
+    }
+    
+    function executeInternalDragOperation(element, dragResult) {
+        console.log('[BlocVibe] 🎯 Executing internal drag operation:', dragResult.type);
+        
+        // استعادة الموضع الأصلي للعناصر الفرعية
+        const children = element.querySelectorAll('[id^="bloc-"]');
+        children.forEach(child => {
+            if (child.originalTransform) {
+                child.style.transform = child.originalTransform;
+                child.classList.remove('bloc-internal-dragging');
+                
+                setTimeout(() => {
+                    child.style.transition = '';
+                    child.originalTransform = null;
+                }, 200);
+            }
+        });
+        
+        // استعادة مظهر العنصر الأصلي
+        element.style.backgroundColor = '';
+        element.style.border = '';
+        
+        // تنفيذ العملية حسب النوع
+        switch (dragResult.type) {
+            case 'horizontal_reorder':
+                executeHorizontalReorder(element, dragResult);
+                break;
+            case 'vertical_stack':
+                executeVerticalStack(element, dragResult);
+                break;
+            case 'mixed_rearrangement':
+                executeMixedRearrangement(element, dragResult);
+                break;
+            default:
+                console.log('[BlocVibe] ℹ️ No internal drag operation needed');
+        }
+    }
+    
+    function executeHorizontalReorder(element, dragResult) {
+        const children = Array.from(element.querySelectorAll('[id^="bloc-"]'));
+        if (children.length < 2) return;
+        
+        console.log(`[BlocVibe] ↔️ Executing horizontal reorder: ${dragResult.direction}`);
+        
+        if (dragResult.direction === 'right') {
+            // تحريك العناصر إلى اليمين
+            children.forEach((child, index) => {
+                if (index < children.length - 1) {
+                    const nextChild = children[index + 1];
+                    element.insertBefore(nextChild, child);
+                }
+            });
+        } else {
+            // تحريك العناصر إلى اليسار
+            children.forEach((child, index) => {
+                if (index > 0) {
+                    const prevChild = children[index - 1];
+                    element.insertBefore(child, prevChild);
+                }
+            });
+        }
+        
+        // إشعار Java layer
+        notifyJavaInternalOperation('reorder', {
+            elementId: element.id,
+            direction: dragResult.direction,
+            type: 'horizontal'
+        });
+        
+        visualFeedbackSystem.createValidationFeedback(
+            element, 'success', `تم إعادة ترتيب العناصر أفقياً ${dragResult.direction === 'right' ? 'يميناً' : 'يساراً'}`
+        );
+    }
+    
+    function executeVerticalStack(element, dragResult) {
+        const children = Array.from(element.querySelectorAll('[id^="bloc-"]'));
+        if (children.length < 2) return;
+        
+        console.log(`[BlocVibe] ↕️ Executing vertical stack: ${dragResult.direction}`);
+        
+        if (dragResult.direction === 'down') {
+            // ترتيب العناصر من الأعلى للأسفل
+            children.sort((a, b) => {
+                const rectA = a.getBoundingClientRect();
+                const rectB = b.getBoundingClientRect();
+                return rectA.top - rectB.top;
+            });
+        } else {
+            // ترتيب العناصر من الأسفل للأعلى
+            children.sort((a, b) => {
+                const rectA = a.getBoundingClientRect();
+                const rectB = b.getBoundingClientRect();
+                return rectB.top - rectA.top;
+            });
+        }
+        
+        // إعادة ترتيب العناصر في DOM
+        children.forEach(child => {
+            element.appendChild(child);
+        });
+        
+        // إشعار Java layer
+        notifyJavaInternalOperation('stack', {
+            elementId: element.id,
+            direction: dragResult.direction,
+            type: 'vertical'
+        });
+        
+        visualFeedbackSystem.createValidationFeedback(
+            element, 'success', `تم ترتيب العناصر عمودياً ${dragResult.direction === 'down' ? 'للأسفل' : 'للأعلى'}`
+        );
+    }
+    
+    function executeMixedRearrangement(element, dragResult) {
+        console.log('[BlocVibe] 🔀 Executing mixed rearrangement');
+        
+        const children = Array.from(element.querySelectorAll('[id^="bloc-"]'));
+        if (children.length < 2) return;
+        
+        // تحديد معيار الترتيب بناءً على الموضع المفضل
+        const centerX = element.getBoundingClientRect().left + element.getBoundingClientRect().width / 2;
+        const centerY = element.getBoundingClientRect().top + element.getBoundingClientRect().height / 2;
+        
+        children.sort((a, b) => {
+            const rectA = a.getBoundingClientRect();
+            const rectB = b.getBoundingClientRect();
+            
+            const distA = Math.sqrt(
+                Math.pow(rectA.left + rectA.width / 2 - centerX, 2) +
+                Math.pow(rectA.top + rectA.height / 2 - centerY, 2)
+            );
+            
+            const distB = Math.sqrt(
+                Math.pow(rectB.left + rectB.width / 2 - centerX, 2) +
+                Math.pow(rectB.top + rectB.height / 2 - centerY, 2)
+            );
+            
+            return distA - distB;
+        });
+        
+        // إعادة ترتيب العناصر
+        children.forEach(child => {
+            element.appendChild(child);
+        });
+        
+        // إشعار Java layer
+        notifyJavaInternalOperation('rearrange', {
+            elementId: element.id,
+            type: 'mixed',
+            centerX: centerX,
+            centerY: centerY
+        });
+        
+        visualFeedbackSystem.createValidationFeedback(
+            element, 'success', 'تم إعادة ترتيب العناصر بشكل مختلط'
+        );
+    }
+    
+    // ==================== ENHANCED ELEMENT INTERACTION ====================
+    
+    function makeElementsInteractive() {
+        const elements = document.querySelectorAll('body [id^="bloc-"]');
+        console.log(`[BlocVibe] 🎯 Making ${elements.length} elements interactive with enhanced system`);
+        
+        elements.forEach(el => {
+            enableEnhancedPointerDragging(el);
+            enableSelection(el);
+            enableInternalDrag(el); // تفعيل السحب الداخلي
+            setupElementCache(el);
+        });
+    }
+    
+    function setupElementCache(element) {
+        const cacheKey = element.id;
+        const cacheData = {
+            rect: element.getBoundingClientRect(),
+            children: Array.from(element.children).map(child => child.id),
+            parent: element.parentNode.id,
+            timestamp: Date.now()
+        };
+        elementCache.set(cacheKey, cacheData);
+    }
+    
+    // ==================== ENHANCED POINTER DRAGGING ====================
+    
+    function enableEnhancedPointerDragging(element) {
+        // Prevent default for images
+        const imgs = element.querySelectorAll('img');
+        imgs.forEach(img => {
+            img.draggable = false;
+            img.style.userSelect = 'none';
+            img.style.webkitUserDrag = 'none';
+        });
+        
+        // Enhanced pointer events
+        element.addEventListener('pointerdown', function(e) {
+            if (e.button === 2) return; // Right click
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('[BlocVibe] 👆 Enhanced pointer down on:', element.id);
+            
+            // تحديد نوع السحب
+            dragType = determineDragType(element, e);
+            dragModeManager.setMode(dragType);
+            
+            element.setPointerCapture(e.pointerId);
+            draggedElement = element;
+            dragSource = {
+                element: element,
+                parent: element.parentNode,
+                index: Array.from(element.parentNode.children).indexOf(element),
+                timestamp: Date.now()
+            };
+            
+            currentState = DragState.READY;
+            
+            const rect = element.getBoundingClientRect();
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            dragOffsetX = e.clientX - rect.left;
+            dragOffsetY = e.clientY - rect.top;
+            
+            currentPointerX = e.clientX;
+            currentPointerY = e.clientY;
+            lastPointerX = e.clientX;
+            lastPointerY = e.clientY;
+            
+            startEnhancedRecoveryTimer();
+            
+        }, { passive: false });
+        
+        element.addEventListener('pointermove', function(e) {
+            if (!draggedElement || currentState === DragState.IDLE) return;
+            
+            e.preventDefault();
+            e.stopPropagation();
+            
+            currentPointerX = e.clientX;
+            currentPointerY = e.clientY;
+            
+            // حساب السرعة
+            const deltaX = currentPointerX - lastPointerX;
+            const deltaY = currentPointerY - lastPointerY;
+            pointerVelocity = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            
+            const distX = currentPointerX - dragStartX;
+            const distY = currentPointerY - dragStartY;
+            const distance = Math.sqrt(distX * distX + distY * distY);
+            
+            if (currentState === DragState.READY && distance > MIN_DRAG_DISTANCE) {
+                startEnhancedDragging(element, e);
+            }
+            
+            lastPointerX = currentPointerX;
+            lastPointerY = currentPointerY;
+            
+        }, { passive: false });
+        
+        element.addEventListener('pointerup', function(e) {
+            if (!draggedElement) return;
+            
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('[BlocVibe] 🖐️ Enhanced pointer up - State:', currentState);
+            
+            if (currentState === DragState.DRAGGING) {
+                performEnhancedDrop(e);
+            }
+            
+            endEnhancedDragging();
+            
+        }, { passive: false });
+        
+        element.addEventListener('pointercancel', function(e) {
+            console.log('[BlocVibe] ⚠️ Enhanced pointer cancelled');
+            endEnhancedDragging();
+        });
+        
+        // Enhanced hover effects
+        element.addEventListener('pointerenter', function(e) {
+            if (currentState === DragState.DRAGGING && draggedElement && draggedElement !== element) {
+                element.style.background = 'rgba(13, 110, 253, 0.05)';
+                
+                // Highlight drop zone
+                const dropZone = dropZoneManager.findDropZone(currentPointerX, currentPointerY);
+                if (dropZone && dropZone.id === element.id) {
+                    dropZoneManager.highlightZone(dropZone.id);
+                }
+            }
+        });
+        
+        element.addEventListener('pointerleave', function(e) {
+            element.style.background = '';
+            dropZoneManager.removeZoneHighlight(element.id);
+        });
+    }
+    
+    function determineDragType(element, event) {
+        // تحديد نوع السحب بناءً على السياق
+        if (event.ctrlKey || event.metaKey) {
+            return DragTypes.DUPLICATE;
+        } else if (event.shiftKey) {
+            return DragTypes.REORDER;
+        } else if (element.hasAttribute('data-internal-draggable')) {
+            return DragTypes.INTERNAL;
+        } else {
+            return DragTypes.EXTERNAL;
+        }
+    }
+    
+    // ==================== ENHANCED DRAG LIFECYCLE ====================
+    
+    function startEnhancedDragging(element, event) {
+        console.log(`[BlocVibe] 🎬 Starting enhanced drag: ${element.id} (${dragType})`);
+        
+        currentState = DragState.DRAGGING;
+        dragStartTime = performance.now();
+        frameCount = 0;
+        
+        // Enhanced visual effects
+        element.style.opacity = '0.35';
+        element.style.transform = 'scale(0.95)';
+        element.style.transition = 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
+        element.classList.add('bloc-dragging');
+        
+        // Create enhanced ghost
+        dragGhostId = visualFeedbackSystem.createDragGhost(element, {
+            opacity: dragType === DragTypes.DUPLICATE ? '0.7' : '0.9',
+            transform: `scale(1) rotate(${dragType === DragTypes.INTERNAL ? '1deg' : '3deg'})`
+        });
+        
+        // Start animation loop
+        startEnhancedAnimationLoop();
+        
+        // Disable scrolling
+        document.body.style.overflow = 'hidden';
+        document.body.style.touchAction = 'none';
+        
+        // Performance tracking
+        performanceMetrics.totalDrags++;
+    }
+    
+    function endEnhancedDragging() {
+        console.log('[BlocVibe] 🏁 Ending enhanced drag');
+        
+        // Stop animation loop
+        stopEnhancedAnimationLoop();
+        
+        // Restore original element
+        if (draggedElement) {
+            draggedElement.style.opacity = '1';
+            draggedElement.style.transform = 'scale(1)';
+            draggedElement.classList.remove('bloc-dragging');
+        }
+        
+        // Clean up visual effects
+        if (dragGhostId) {
+            visualFeedbackSystem.removeGhost(dragGhostId);
+            dragGhostId = null;
+        }
+        
+        if (dropIndicatorId) {
+            visualFeedbackSystem.removeDropIndicator(dropIndicatorId);
+            dropIndicatorId = null;
+        }
+        
+        dropZoneManager.highlightZone(null);
+        
+        // Reset state
+        currentState = DragState.IDLE;
+        draggedElement = null;
+        dragSource = null;
+        
+        // Restore scrolling
+        document.body.style.overflow = '';
+        document.body.style.touchAction = '';
+        
+        // Clear recovery timers
+        clearEnhancedRecoveryTimer();
+        
+        // Performance logging
+        if (dragStartTime > 0) {
+            const duration = performance.now() - dragStartTime;
+            const fps = frameCount / (duration / 1000);
+            
+            performanceMetrics.averageFPS = 
+                (performanceMetrics.averageFPS * (performanceMetrics.totalDrags - 1) + fps) / 
+                performanceMetrics.totalDrags;
+            
+            console.log(`[BlocVibe] 📊 Enhanced drag performance: ${duration.toFixed(0)}ms, ${fps.toFixed(1)} FPS`);
+            
+            // Alert if performance is poor
+            if (fps < PERFORMANCE_THRESHOLD) {
+                performanceMetrics.droppedFrames++;
+                console.warn(`[BlocVibe] ⚠️ Low performance detected: ${fps.toFixed(1)} FPS`);
+            }
+        }
+    }
+    
+    // ==================== ENHANCED ANIMATION LOOP ====================
+    
+    function startEnhancedAnimationLoop() {
+        if (isAnimating) return;
+        
+        isAnimating = true;
+        console.log('[BlocVibe] 🎞️ Starting enhanced animation loop');
+        
+        function animate(timestamp) {
+            if (!isAnimating) return;
+            
+            frameCount++;
+            lastFrameTime = timestamp;
+            
+            // Update ghost position
+            updateEnhancedGhostPosition();
+            
+            // Update drop indicators
+            updateEnhancedDropIndicator();
+            
+            // Update performance metrics
+            updatePerformanceMetrics(timestamp);
+            
+            // Continue loop
+            animationFrameId = requestAnimationFrame(animate);
+        }
+        
+        animationFrameId = requestAnimationFrame(animate);
+    }
+    
+    function stopEnhancedAnimationLoop() {
+        isAnimating = false;
+        if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+        }
+        console.log('[BlocVibe] ⏸️ Enhanced animation loop stopped');
+    }
+    
+    function updateEnhancedGhostPosition() {
+        if (!dragGhostId || !isDragging()) return;
+        
+        const x = currentPointerX + GHOST_OFFSET;
+        const y = currentPointerY + GHOST_OFFSET;
+        
+        visualFeedbackSystem.updateGhostPosition(dragGhostId, x, y);
+    }
+    
+    function updateEnhancedDropIndicator() {
+        if (!isDragging() || !draggedElement) {
+            if (dropIndicatorId) {
+                visualFeedbackSystem.removeDropIndicator(dropIndicatorId);
+                dropIndicatorId = null;
+            }
+            return;
+        }
+        
+        const dropZone = dropZoneManager.findDropZone(currentPointerX, currentPointerY);
+        
+        if (dropZone && dropZone.zone) {
+            // Calculate optimal drop position
+            const positionResult = positionCalculator.calculateDropPosition(
+                draggedElement, dropZone.zone.element, currentPointerX, currentPointerY
+            );
+            
+            if (positionResult.isValidDrop) {
+                // Update drop zone highlight
+                dropZoneManager.highlightZone(dropZone.id);
+                
+                // Create or update drop indicator
+                if (!dropIndicatorId) {
+                    dropIndicatorId = visualFeedbackSystem.createDropIndicator(
+                        dropZone.zone.element, positionResult.position
+                    );
+                }
+            } else {
+                // Invalid drop position
+                if (dropIndicatorId) {
+                    visualFeedbackSystem.removeDropIndicator(dropIndicatorId);
+                    dropIndicatorId = null;
+                }
+                dropZoneManager.highlightZone(null);
+            }
+        } else {
+            // No valid drop zone
+            if (dropIndicatorId) {
+                visualFeedbackSystem.removeDropIndicator(dropIndicatorId);
+                dropIndicatorId = null;
+            }
+            dropZoneManager.highlightZone(null);
+        }
+    }
+    
+    // ==================== ENHANCED DROP EXECUTION ====================
+    
+    function performEnhancedDrop(event) {
+        const targetZone = dropZoneManager.findDropZone(currentPointerX, currentPointerY);
+        
+        if (!targetZone || !draggedElement || targetZone.zone.element === draggedElement) {
+            console.log('[BlocVibe] ⚠️ No valid drop target for enhanced drop');
+            showEnhancedNotification('لا يمكن إسقاط العنصر هنا', 'warning');
+            return;
+        }
+        
+        // Calculate drop position
+        const positionResult = positionCalculator.calculateDropPosition(
+            draggedElement, targetZone.zone.element, currentPointerX, currentPointerY
+        );
+        
+        if (!positionResult.isValidDrop) {
+            console.warn('[BlocVibe] ⚠️ Invalid drop position');
+            showEnhancedNotification('موضع الإسقاط غير صحيح', 'error');
+            return;
+        }
+        
+        console.log('[BlocVibe] 🎯 Performing enhanced drop:', {
+            dragged: draggedElement.id,
+            target: targetZone.id,
+            type: dragType,
+            position: positionResult.position.type
+        });
+        
+        // Execute drop based on type
+        switch (dragType) {
+            case DragTypes.EXTERNAL:
+                executeExternalDrop(draggedElement, targetZone, positionResult);
+                break;
+            case DragTypes.DUPLICATE:
+                executeDuplicateDrop(draggedElement, targetZone, positionResult);
+                break;
+            case DragTypes.REORDER:
+                executeReorderDrop(draggedElement, targetZone, positionResult);
+                break;
+            default:
+                executeDefaultDrop(draggedElement, targetZone, positionResult);
+        }
+        
+        performanceMetrics.successfulDrops++;
+    }
+    
+    function executeExternalDrop(source, targetZone, positionResult) {
+        try {
+            const targetElement = targetZone.zone.element;
+            const parent = targetElement.parentNode;
+            
+            if (positionResult.position.type === 'before') {
+                parent.insertBefore(source, targetElement);
+            } else if (positionResult.position.type === 'after') {
+                parent.insertBefore(source, targetElement.nextSibling);
+            } else {
+                // Inside the target element
+                targetElement.appendChild(source);
+            }
+            
+            // Enhanced success feedback
+            source.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+            source.style.transform = 'scale(1.05)';
+            setTimeout(() => {
+                source.style.transform = 'scale(1)';
+            }, 300);
+            
+            // Queue operation
+            queueEnhancedOperation({
+                type: 'move',
+                elementId: source.id,
+                parentId: parent.id || 'body',
+                index: Array.from(parent.children).indexOf(source),
+                dragType: 'external'
+            });
+            
+            showEnhancedNotification('تم نقل العنصر بنجاح ✨', 'success');
+            
+        } catch (error) {
+            handleDropError('external', error);
+        }
+    }
+    
+    function executeDuplicateDrop(source, targetZone, positionResult) {
+        try {
+            const targetElement = targetZone.zone.element;
+            const parent = targetElement.parentNode;
+            
+            // Create duplicate
+            const duplicate = source.cloneNode(true);
+            duplicate.id = generateUniqueId(source.id);
+            
+            // Update internal references in duplicate
+            updateDuplicateReferences(duplicate, source.id);
+            
+            // Insert duplicate
+            if (positionResult.position.type === 'before') {
+                parent.insertBefore(duplicate, targetElement);
+            } else if (positionResult.position.type === 'after') {
+                parent.insertBefore(duplicate, targetElement.nextSibling);
+            } else {
+                targetElement.appendChild(duplicate);
+            }
+            
+            // Make duplicate interactive
+            makeElementInteractive(duplicate);
+            
+            // Success feedback
+            visualFeedbackSystem.createValidationFeedback(
+                duplicate, 'success', 'تم إنشاء نسخة جديدة ✨'
+            );
+            
+            // Queue operation
+            queueEnhancedOperation({
+                type: 'duplicate',
+                originalId: source.id,
+                duplicateId: duplicate.id,
+                parentId: parent.id || 'body',
+                index: Array.from(parent.children).indexOf(duplicate),
+                position: positionResult.position.type
+            });
+            
+            showEnhancedNotification('تم إنشاء نسخة جديدة من العنصر', 'success');
+            
+        } catch (error) {
+            handleDropError('duplicate', error);
+        }
+    }
+    
+    function executeReorderDrop(source, targetZone, positionResult) {
+        try {
+            // This is similar to external drop but with different semantics
+            executeExternalDrop(source, targetZone, positionResult);
+            
+            // Additional reorder-specific operations
+            queueEnhancedOperation({
+                type: 'reorder',
+                elementId: source.id,
+                fromParent: dragSource.parent.id,
+                toParent: targetZone.zone.element.parentNode.id,
+                dragType: 'reorder'
+            });
+            
+            showEnhancedNotification('تم إعادة ترتيب العنصر', 'info');
+            
+        } catch (error) {
+            handleDropError('reorder', error);
+        }
+    }
+    
+    function executeDefaultDrop(source, targetZone, positionResult) {
+        // Default behavior - treat as external drop
+        executeExternalDrop(source, targetZone, positionResult);
+    }
+    
+    // ==================== HELPER FUNCTIONS ====================
+    
+    function generateUniqueId(originalId) {
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substr(2, 9);
+        return `${originalId}-copy-${timestamp}-${random}`;
+    }
+    
+    function updateDuplicateReferences(duplicate, originalId) {
+        // Update any internal references, data attributes, etc.
+        duplicate.setAttribute('data-copy-of', originalId);
+        
+        // Update event listeners if needed
+        const cloneChildren = duplicate.querySelectorAll('[id^="bloc-"]');
+        cloneChildren.forEach(child => {
+            child.id = generateUniqueId(child.id);
+        });
+    }
+    
+    function makeElementInteractive(element) {
+        enableEnhancedPointerDragging(element);
+        enableSelection(element);
+        enableInternalDrag(element);
+        setupElementCache(element);
+    }
+    
+    function handleDropError(dropType, error) {
+        console.error(`[BlocVibe] ❌ ${dropType} drop failed:`, error);
+        logError(`drop_error_${dropType}`, error.message);
+        showEnhancedNotification(`فشل ${dropType === 'duplicate' ? 'إنشاء النسخة' : 'نقل العنصر'}`, 'error');
+    }
+    
+    // ==================== ENHANCED RECOVERY SYSTEM ====================
+    
+    function startEnhancedRecoveryTimer() {
+        clearEnhancedRecoveryTimer();
+        
+        recoveryTimer = setTimeout(() => {
+            if (isDragging()) {
+                console.warn('[BlocVibe] ⚠️ Enhanced recovery timeout - force ending drag');
+                endEnhancedDragging();
+                visualFeedbackSystem.createValidationFeedback(
+                    document.body, 'warning', 'تم إيقاف السحب تلقائياً'
+                );
+            }
+        }, RECOVERY_TIMEOUT);
+    }
+    
+    function clearEnhancedRecoveryTimer() {
+        if (recoveryTimer) {
+            clearTimeout(recoveryTimer);
+            recoveryTimer = null;
+        }
+    }
+    
+    function startStateMonitor() {
+        stateCheckTimer = setInterval(() => {
+            checkSystemState();
+        }, STATE_CHECK_INTERVAL);
+    }
+    
+    function checkSystemState() {
+        // Check for stuck states
+        if (currentState !== DragState.IDLE && !isDragging()) {
+            console.warn('[BlocVibe] ⚠️ Stuck state detected, recovering...');
+            currentState = DragState.IDLE;
+        }
+        
+        // Clean up stuck effects
+        visualFeedbackSystem.clearAllEffects();
+        
+        // Update cache
+        if (Date.now() - lastCacheUpdate > CACHE_DURATION) {
+            updateLayoutCache();
+        }
+    }
+    
+    // ==================== PERFORMANCE MONITORING ====================
+    
+    function startPerformanceMonitor() {
+        setInterval(() => {
+            logPerformanceMetrics();
+        }, 10000); // Every 10 seconds
+    }
+    
+    function updatePerformanceMetrics(timestamp) {
+        if (lastFrameTime > 0) {
+            const deltaTime = timestamp - lastFrameTime;
+            const currentFPS = 1000 / deltaTime;
+            
+            // Update moving average
+            if (performanceMetrics.averageFPS === 0) {
+                performanceMetrics.averageFPS = currentFPS;
+            } else {
+                performanceMetrics.averageFPS = 
+                    performanceMetrics.averageFPS * 0.9 + currentFPS * 0.1;
+            }
+        }
+    }
+    
+    function logPerformanceMetrics() {
+        console.log('[BlocVibe] 📊 Performance Metrics:', {
+            averageFPS: performanceMetrics.averageFPS.toFixed(1),
+            totalDrags: performanceMetrics.totalDrags,
+            successfulDrops: performanceMetrics.successfulDrops,
+            dropRate: ((performanceMetrics.successfulDrops / performanceMetrics.totalDrags) * 100).toFixed(1) + '%',
+            droppedFrames: performanceMetrics.droppedFrames,
+            cacheSize: elementCache.size,
+            activeEffects: visualFeedbackSystem.activeEffects.size
+        });
+    }
+    
+    // ==================== ENHANCED CACHE SYSTEM ====================
+    
+    function updateLayoutCache() {
+        const elements = document.querySelectorAll('[id^="bloc-"]');
+        elements.forEach(element => {
+            const cacheKey = element.id;
+            const cacheData = {
+                rect: element.getBoundingClientRect(),
+                children: Array.from(element.children).map(child => child.id),
+                parent: element.parentNode.id,
+                timestamp: Date.now()
+            };
+            elementCache.set(cacheKey, cacheData);
+        });
+        
+        lastCacheUpdate = Date.now();
+    }
+    
+    // ==================== ERROR HANDLING ====================
+    
+    function logError(type, message) {
+        const errorEntry = {
+            type: type,
+            message: message,
+            timestamp: new Date().toISOString(),
+            state: currentState,
+            element: draggedElement?.id || null
+        };
+        
+        errorLog.push(errorEntry);
+        
+        // Keep log size limited
+        if (errorLog.length > maxErrorLogSize) {
+            errorLog.shift();
+        }
+        
+        console.error(`[BlocVibe] ❌ ${type}:`, message);
+    }
+    
+    // ==================== ENHANCED QUEUE SYSTEM ====================
+    
+    function queueEnhancedOperation(operation) {
+        operation.timestamp = Date.now();
+        operationQueue.push(operation);
+        console.log('[BlocVibe] 📝 Enhanced operation queued:', operation.type, '- Queue size:', operationQueue.length);
+    }
+    
+    function processEnhancedQueue() {
+        if (isProcessingQueue || operationQueue.length === 0 || isDragging()) {
+            return;
+        }
+        
+        isProcessingQueue = true;
+        console.log('[BlocVibe] ⚙️ Processing enhanced operation queue:', operationQueue.length, 'operations');
+        
+        const operations = [...operationQueue];
+        operationQueue = [];
+        
+        operations.forEach(op => {
+            try {
+                switch(op.type) {
+                    case 'move':
+                        notifyJavaElementMoved(op.elementId, op.parentId, op.index, op.dragType);
+                        break;
+                    case 'duplicate':
+                        notifyJavaElementDuplicated(op.originalId, op.duplicateId, op.parentId, op.index, op.position);
+                        break;
+                    case 'delete':
+                        notifyJavaElementDeleted(op.elementId);
+                        break;
+                    case 'wrap':
+                        notifyJavaElementsWrapped(op.elementIds);
+                        break;
+                    case 'reorder':
+                        notifyJavaElementReordered(op.elementId, op.fromParent, op.toParent);
+                        break;
+                    case 'internal':
+                        notifyJavaInternalOperation(op.operation, op.data);
+                        break;
+                }
+            } catch (error) {
+                logError('queue_processing', error.message);
+            }
+        });
+        
+        isProcessingQueue = false;
+        lastRenderTime = Date.now();
+    }
+    
+    // ==================== ENHANCED ANDROID BRIDGE ====================
+    
+    function notifyJavaElementMoved(elementId, parentId, index, dragType = 'external') {
+        if (typeof AndroidBridge !== 'undefined') {
+            try {
+                if (AndroidBridge.onElementMovedEnhanced) {
+                    AndroidBridge.onElementMovedEnhanced(elementId, parentId, index, dragType);
+                } else {
+                    AndroidBridge.onElementMoved(elementId, parentId, index);
+                }
+                console.log('[BlocVibe] 📤 Enhanced notification sent: element moved');
+            } catch (error) {
+                logError('android_notification', error.message);
+            }
+        }
+    }
+    
+    function notifyJavaElementDuplicated(originalId, duplicateId, parentId, index, position) {
+        if (typeof AndroidBridge !== 'undefined') {
+            try {
+                if (AndroidBridge.onElementDuplicated) {
+                    AndroidBridge.onElementDuplicated(originalId, duplicateId, parentId, index, position);
+                    console.log('[BlocVibe] 📤 Enhanced notification sent: element duplicated');
+                }
+            } catch (error) {
+                logError('android_notification', error.message);
+            }
+        }
+    }
+    
+    function notifyJavaElementDeleted(elementId) {
+        if (typeof AndroidBridge !== 'undefined') {
+            try {
+                AndroidBridge.onElementDelete(elementId);
+                console.log('[BlocVibe] 📤 Enhanced notification sent: element deleted');
+            } catch (error) {
+                logError('android_notification', error.message);
+            }
+        }
+    }
+    
+    function notifyJavaElementsWrapped(elementIds) {
+        if (typeof AndroidBridge !== 'undefined') {
+            try {
+                AndroidBridge.onElementsWrapInDiv(JSON.stringify(elementIds));
+                console.log('[BlocVibe] 📤 Enhanced notification sent: elements wrapped');
+            } catch (error) {
+                logError('android_notification', error.message);
+            }
+        }
+    }
+    
+    function notifyJavaElementReordered(elementId, fromParent, toParent) {
+        if (typeof AndroidBridge !== 'undefined') {
+            try {
+                if (AndroidBridge.onElementReordered) {
+                    AndroidBridge.onElementReordered(elementId, fromParent, toParent);
+                }
+                console.log('[BlocVibe] 📤 Enhanced notification sent: element reordered');
+            } catch (error) {
+                logError('android_notification', error.message);
+            }
+        }
+    }
+    
+    function notifyJavaInternalOperation(operation, data) {
+        if (typeof AndroidBridge !== 'undefined') {
+            try {
+                if (AndroidBridge.onInternalOperation) {
+                    AndroidBridge.onInternalOperation(operation, JSON.stringify(data));
+                }
+                console.log('[BlocVibe] 📤 Enhanced notification sent: internal operation');
+            } catch (error) {
+                logError('android_notification', error.message);
+            }
+        }
+    }
+    
+    // ==================== ENHANCED KEYBOARD SYSTEM ====================
+    
+    function handleEnhancedKeyDown(e) {
+        if (e.ctrlKey || e.metaKey) {
+            multiSelectMode = true;
+        }
+        
+        // Enhanced keyboard shortcuts
+        switch(e.key) {
+            case 'Escape':
+                if (isDragging()) {
+                    console.log('[BlocVibe] ⎋ Escape pressed - cancelling enhanced drag');
+                    endEnhancedDragging();
+                }
+                break;
+                
+            case 'Delete':
+                if (selectedElements.length > 0) {
+                    e.preventDefault();
+                    selectedElements.forEach(el => {
+                        queueEnhancedOperation({
+                            type: 'delete',
+                            elementId: el.id
+                        });
+                        el.remove();
+                    });
+                    selectedElements = [];
+                    showEnhancedNotification('تم حذف العناصر', 'success');
+                }
+                break;
+                
+            case 'd':
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    if (selectedElements.length === 1) {
+                        const element = selectedElements[0];
+                        const duplicate = element.cloneNode(true);
+                        duplicate.id = generateUniqueId(element.id);
+                        element.parentNode.insertBefore(duplicate, element.nextSibling);
+                        makeElementInteractive(duplicate);
+                        showEnhancedNotification('تم إنشاء نسخة سريعة', 'info');
+                    }
+                }
+                break;
+                
+            case 'ArrowUp':
+                if (selectedElements.length === 1 && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    if (typeof AndroidBridge !== 'undefined' && AndroidBridge.onElementMoveUp) {
+                        AndroidBridge.onElementMoveUp(selectedElements[0].id);
+                    }
+                }
+                break;
+                
+            case 'ArrowDown':
+                if (selectedElements.length === 1 && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    if (typeof AndroidBridge !== 'undefined' && AndroidBridge.onElementMoveDown) {
+                        AndroidBridge.onElementMoveDown(selectedElements[0].id);
+                    }
+                }
+                break;
+                
+            case 'g':
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    if (selectedElements.length > 0) {
+                        const elementIds = selectedElements.map(el => el.id);
+                        queueEnhancedOperation({
+                            type: 'wrap',
+                            elementIds: elementIds
+                        });
+                    }
+                }
+                break;
+        }
+    }
+    
+    function handleEnhancedKeyUp(e) {
+        if (!e.ctrlKey && !e.metaKey) {
+            multiSelectMode = false;
+        }
+    }
+    
+    // ==================== ENHANCED SELECTION SYSTEM ====================
+    
+    function enableSelection(element) {
+        element.style.cursor = 'move';
+        element.style.userSelect = 'none';
+        element.style.webkitUserSelect = 'none';
+        element.style.touchAction = 'none';
+        
+        if (window.matchMedia('(hover: hover)').matches) {
+            element.addEventListener('mouseenter', function() {
+                if (!isDragging() && !selectedElements.includes(element)) {
+                    element.style.outline = '2px dashed rgba(13, 110, 253, 0.5)';
+                    element.style.transition = 'outline 0.2s ease';
+                }
+            });
+            
+            element.addEventListener('mouseleave', function() {
+                if (!selectedElements.includes(element)) {
+                    element.style.outline = 'none';
+                }
+            });
+        }
+    }
+    
+    function handleEnhancedElementClick(e) {
+        if (isDragging()) return;
+        
+        const element = e.target.closest('[id^="bloc-"]');
+        if (!element) return;
+        
+        e.stopPropagation();
+        
+        if (multiSelectMode) {
+            toggleSelection(element);
+        } else {
+            clearSelections();
+            selectElement(element);
+        }
+        
+        // Enhanced selection notification
+        if (typeof AndroidBridge !== 'undefined') {
+            try {
+                if (AndroidBridge.onElementSelectedEnhanced) {
+                    AndroidBridge.onElementSelectedEnhanced(element.id, selectedElements.map(el => el.id));
+                } else {
+                    AndroidBridge.onElementSelected(element.id);
+                }
+            } catch (error) {
+                logError('selection_notification', error.message);
+            }
+        }
+    }
+    
+    function selectElement(element) {
+        if (selectedElements.includes(element)) return;
+        
+        selectedElements.push(element);
+        element.classList.add('bloc-selected');
+        element.style.outline = '3px solid #0D6EFD';
+        element.style.backgroundColor = 'rgba(13, 110, 253, 0.08)';
+        element.style.transition = 'all 0.2s ease';
+    }
+    
+    function deselectElement(element) {
+        const index = selectedElements.indexOf(element);
+        if (index > -1) {
+            selectedElements.splice(index, 1);
+            element.classList.remove('bloc-selected');
+            element.style.outline = 'none';
+            element.style.backgroundColor = '';
+        }
+    }
+    
+    function toggleSelection(element) {
+        if (selectedElements.includes(element)) {
+            deselectElement(element);
+        } else {
+            selectElement(element);
+        }
+    }
+    
+    function clearSelections() {
+        selectedElements.forEach(el => {
+            el.classList.remove('bloc-selected');
+            el.style.outline = 'none';
+            el.style.backgroundColor = '';
+        });
+        selectedElements = [];
+    }
+    
+    // ==================== ENHANCED NOTIFICATION SYSTEM ====================
+    
+    function showEnhancedNotification(message, type = 'info') {
+        console.log(`[BlocVibe] 💬 Enhanced ${type.toUpperCase()}: ${message}`);
+        
+        // Visual feedback
+        visualFeedbackSystem.createValidationFeedback(document.body, type, message);
+        
+        // Android notification
+        if (typeof AndroidBridge !== 'undefined') {
+            try {
+                if (AndroidBridge.logEnhanced) {
+                    AndroidBridge.logEnhanced(`[${type}] ${message}`, type);
+                } else {
+                    AndroidBridge.log(`[${type}] ${message}`);
+                }
+            } catch (error) {
+                // Silent fail
+            }
+        }
+    }
+    
+    // ==================== DROP ZONE MANAGEMENT ====================
+    
+    function setupDropZones() {
+        // Auto-register common drop zones
+        const containers = document.querySelectorAll('body > *, [data-drop-zone="true"]');
+        containers.forEach(container => {
+            if (container.id) {
+                dropZoneManager.registerZone(container.id, {
+                    element: container,
+                    capacity: 'unlimited',
+                    acceptTypes: ['all'],
+                    visualFeedback: true
+                });
+            }
+        });
+        
+        console.log('[BlocVibe] 📍 Setup drop zones for', containers.length, 'elements');
+    }
+    
+    // ==================== ENHANCED CLEANUP ====================
+    
+    function cleanup() {
+        console.log('[BlocVibe] 🧹 Cleaning up enhanced canvas system...');
+        
+        // Stop all timers
+        clearEnhancedRecoveryTimer();
+        if (stateCheckTimer) {
+            clearInterval(stateCheckTimer);
+            stateCheckTimer = null;
+        }
+        
+        // Stop animation
+        stopEnhancedAnimationLoop();
+        
+        // Clear visual effects
+        visualFeedbackSystem.clearAllEffects();
+        
+        // Clear queues
+        operationQueue = [];
+        
+        // Log final metrics
+        logPerformanceMetrics();
+        
+        console.log('[BlocVibe] ✅ Enhanced cleanup completed');
+    }
+    
+    function handleWindowBlur() {
+        if (isDragging()) {
+            console.log('[BlocVibe] ⚠️ Window lost focus during drag - ending drag');
+            endEnhancedDragging();
+        }
+    }
+    
+    // ==================== ENHANCED PUBLIC API ====================
+    
+    window.BlocVibeCanvas = {
+        // Core functions
+        init: init,
+        makeElementsInteractive: makeElementsInteractive,
+        clearSelections: clearSelections,
+        getSelectedElements: () => selectedElements.map(el => el.id),
+        
+        // Enhanced queue management
+        queueOperation: queueEnhancedOperation,
+        processQueue: processEnhancedQueue,
+        
+        // State management
+        getDragState: () => currentState,
+        getDragType: () => dragType,
+        forceEndDrag: endEnhancedDragging,
+        
+        // Manager access
+        dragModeManager: dragModeManager,
+        dropZoneManager: dropZoneManager,
+        positionCalculator: positionCalculator,
+        visualFeedbackSystem: visualFeedbackSystem,
+        
+        // Performance and monitoring
+        getPerformanceMetrics: () => ({ ...performanceMetrics }),
+        getErrorLog: () => [...errorLog],
+        clearErrorLog: () => { errorLog = []; },
+        
+        // Cache management
+        updateCache: updateLayoutCache,
+        clearCache: () => { elementCache.clear(); layoutCache.clear(); },
+        getCacheSize: () => elementCache.size,
+        
+        // Drop zone management
+        registerDropZone: (id, zone) => dropZoneManager.registerZone(id, zone),
+        unregisterDropZone: (id) => dropZoneManager.unregisterZone(id),
+        
+        // Internal drag operations
+        enableInternalDrag: enableInternalDrag,
+        performInternalDrag: performInternalDrag
+    };
+    
+    // ==================== ENHANCED INITIALIZATION ====================
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    
+    console.log('[BlocVibe] 🎉 Ultra-Advanced Canvas System v3.0 loaded successfully!');
+    
+    // ==================== ENHANCED PAGE READY NOTIFICATION ====================
+    if (typeof AndroidBridge !== 'undefined') {
+        window.addEventListener('load', function() {
+            try {
+                const initMetrics = {
+                    totalElements: document.querySelectorAll('[id^="bloc-"]').length,
+                    version: '3.0',
+                    features: ['drag_modes', 'drop_zones', 'position_calculator', 'visual_feedback', 'cache', 'recovery']
+                };
+                
+                if (AndroidBridge.onPageReadyEnhanced) {
+                    AndroidBridge.onPageReadyEnhanced(JSON.stringify(initMetrics));
+                } else {
+                    AndroidBridge.onPageReady();
+                }
+                
+                console.log('[BlocVibe] 📢 Enhanced page ready notification sent to Android');
+            } catch (error) {
+                console.error('[BlocVibe] ❌ Failed to send enhanced page ready:', error);
+            }
+        });
+    }
+    
+    // ==================== CLEANUP ON UNLOAD ====================
+    window.addEventListener('beforeunload', cleanup);
+    
+})();
