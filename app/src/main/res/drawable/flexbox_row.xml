@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="24dp"
+    android:viewportWidth="48"
+    android:viewportHeight="24">
+    <!-- Background -->
+    <path
+        android:fillColor="#E8DEF8"
+        android:pathData="M0,0h48v24H0z"/>
+    <!-- Flex items arranged horizontally (row) -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M4,6h8v12H4z"/>
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M16,6h8v12h-8z"/>
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M28,6h8v12h-8z"/>
+    <!-- Arrow indicating direction -->
+    <path
+        android:fillColor="#1C1B1F"
+        android:pathData="M38,11h6v2h-6z"/>
+    <path
+        android:fillColor="#1C1B1F"
+        android:pathData="M42,9l3,3 -3,3z"/>
+</vector>
