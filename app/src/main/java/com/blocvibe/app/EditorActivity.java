@@ -63,8 +63,8 @@ public class EditorActivity extends AppCompatActivity {
     
     // Property validation patterns
     private static final Pattern HEX_COLOR_PATTERN = Pattern.compile("^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$");
-    private static final Pattern CSS_DIMENSION_PATTERN = Pattern.compile("^(auto|inherit|(\d+(\.\d+)?)(px|em|rem|%|vh|vw))$");
-    private static final Pattern CSS_VALUE_PATTERN = Pattern.compile("^[a-zA-Z0-9\s,#().%-]+$");
+    private static final Pattern CSS_DIMENSION_PATTERN = Pattern.compile("^(auto|inherit|(\\d+(\\.\\d+)?)(px|em|rem|%|vh|vw))$");
+    private static final Pattern CSS_VALUE_PATTERN = Pattern.compile("^[a-zA-Z0-9\\s,#().%-]+$");
     
     // Property change listeners
     private List<PropertyChangeListener> propertyChangeListeners = new ArrayList<>();
